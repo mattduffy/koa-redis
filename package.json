@@ -1,17 +1,13 @@
 {
   "name": "koa-redis",
-  "description": "Redis storage for Koa session middleware/cache with Sentinel and Cluster support",
-  "version": "4.0.1",
-  "author": "dead_horse <dead_horse@qq.com>",
+  "description": "My fork of koa-redis middleware/cache with Sentinel and Cluster support (now using official node-redis library instead of ioredis).",
+  "version": "5.0.0",
+  "author": "mattduffy <mattduffy@gmail.com>",
   "bugs": {
-    "url": "https://github.com/koajs/koa-redis/issues"
-  },
-  "commitlint": {
-    "extends": [
-      "@commitlint/config-conventional"
-    ]
+    "url": "https://github.com/mattduffy/koa-redis/issues"
   },
   "contributors": [
+    "Matthew Duffy <mattduffy@gmail.com>",
     "dead_horse <dead_horse@qq.com>",
     "Nick Baugh <niftylettuce@gmail.com> (http://niftylettuce.com/)"
   ],
@@ -19,48 +15,36 @@
     "@babel/runtime": "^7.26.10",
     "co-wrap-all": "^1.0.0",
     "debug": "^4.1.1",
-    "ioredis": "^4.14.1"
+    "eslint-config-airbnb-base": "15.0.0",
+    "ioredis": "^4.14.1",
+    "redis": "^5.8.1"
   },
   "devDependencies": {
     "@babel/cli": "^7.8.3",
     "@babel/core": "^7.8.3",
     "@babel/plugin-transform-runtime": "^7.8.3",
     "@babel/preset-env": "^7.8.3",
-    "@commitlint/cli": "^8.3.5",
-    "@commitlint/config-conventional": "^8.3.4",
     "autod": "^3.1.0",
     "co-mocha": "^1.2.2",
     "connect": "^3.7.0",
     "connect-redis": "^4.0.3",
-    "eslint": "^6.8.0",
-    "eslint-config-xo-lass": "^1.0.3",
-    "eslint-plugin-node": "^11.0.0",
+    "eslint": "8.38.0",
     "fixpack": "^2.3.1",
-    "husky": "3.x",
     "istanbul": "^0.4.5",
-    "koa": "^2.11.0",
+    "koa": "2.16.2",
     "koa-generic-session": "^2.0.4",
     "lint-staged": "^9.5.0",
     "mocha": "3.x",
-    "remark-cli": "^7.0.1",
-    "remark-preset-github": "^0.0.16",
     "rimraf": "^3.0.0",
-    "should": "^13.2.3",
-    "xo": "^0.25.3"
+    "should": "^13.2.3"
   },
   "engines": {
-    "node": ">= 4"
+    "node": ">= 18"
   },
   "files": [
     "lib"
   ],
-  "homepage": "https://github.com/koajs/koa-redis",
-  "husky": {
-    "hooks": {
-      "pre-commit": "npm test",
-      "commit-msg": "commitlint -E HUSKY_GIT_PARAMS"
-    }
-  },
+  "homepage": "https://github.com/mattduffy/koa-redis",
   "keywords": [
     "cache",
     "caching",
@@ -70,7 +54,7 @@
     "clustering",
     "clusters",
     "express",
-    "ioredis",
+    "node-redis",
     "koa",
     "middleware",
     "multiple",
@@ -104,16 +88,7 @@
     }
   },
   "main": "lib/index.js",
-  "prettier": {
-    "singleQuote": true,
-    "bracketSpacing": true,
-    "trailingComma": "none"
-  },
-  "remarkConfig": {
-    "plugins": [
-      "preset-github"
-    ]
-  },
+  "type": "module",
   "repository": "koajs/koa-redis",
   "scripts": {
     "autod": "autod -w --prefix=^ --keep=koa -D co-mocha,mocha,istanbul,autod",
