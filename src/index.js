@@ -40,6 +40,7 @@ const debug = Debug('koa-redis')
  *                                          duplicatefunction and pass other options
  * @param   {String}    opts.password       redis password
  * @param   {String}    opts.name
+ * @param   {String}    opts.keyPrefix
  * @param   {Object[]}  opts.sentinelRootNodes
  * @param   {Object}    opts.sentinelClientOptions
  * @param   {String}    opts.sentinelClientOptions.username
@@ -68,12 +69,16 @@ class RedisStore extends EventEmitter {
     // }
     // EventEmitter.call(this)
     this.client = null
+    this.keyPrefix = ''
     this.options = opts || {}
   }
 
   async init(opts) {
     this.options = { ...opts }
     debug('koa-redis redisStore init opts', opts)
+    if (this.options) {
+      this.keyPrefix = this.options.keyPrefix
+    }
     // For backwards compatibility
     this.options.password = this.options.password
       || this.options.auth_pass
@@ -179,8 +184,10 @@ class RedisStore extends EventEmitter {
     return this.client.ping()
   }
 
-  async get(sid) {
+  async get(_sid) {
     let result
+    const sid = `${this.keyPrefix}${_sid}`
+    debug(`koa-redis->get(${sid})`)
     const data = await this.client.get(sid)
     debug('get session: %s', data || 'none')
     if (!data) {
@@ -195,8 +202,10 @@ class RedisStore extends EventEmitter {
     return result
   }
 
-  async set(sid, _sess, _ttl) {
+  async set(_sid, _sess, _ttl) {
     let ttl
+    const sid = `${this.keyPrefix}${_sid}`
+    debug(`koa-redis->set(${sid}, ${_sess}, ${_ttl})`)
     if (typeof ttl === 'number') {
       ttl = Math.ceil(_ttl / 1000)
     }
@@ -211,7 +220,8 @@ class RedisStore extends EventEmitter {
     debug('SET %s complete', sid)
   }
 
-  async destroy(sid) {
+  async destroy(_sid) {
+    const sid = `${this.keyPrefix}${_sid}`
     debug('DEL %s', sid)
     await this.client.del(sid)
     debug('DEL %s complete', sid)
