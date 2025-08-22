@@ -13,11 +13,14 @@
 
 import Debug from 'debug'
 import {
-  createSentinel,
   createClient,
+  createCluster,
+  createSentinel,
 } from 'redis'
-const util = require('util')
-const { EventEmitter } = require('events')
+import { EventEmitter } from 'node:events'
+
+// const util = require('util')
+// const { EventEmitter } = require('events')
 // const debug = require('debug')('koa-redis')
 // const Redis = require('ioredis')
 // const wrap = require('co-wrap-all')
@@ -27,156 +30,210 @@ const debug = Debug('koa-redis')
 /**
  * Initialize redis session middleware with `opts` (see the README for more info):
  *
- * @param {Object} opts
- *   - {Boolean} isRedisCluster redis is cluster
- *   - {Object} client       redis client (overides all other options except db and duplicate)
- *   - {String} socket       redis connect socket (DEPRECATED: use 'path' instead)
- *   - {String} db           redis db
- *   - {Boolean} duplicate   if own client object, will use node redis's duplicate function and
- *                           pass other options
- *   - {String} password     redis password
- *   - {Any} [any]           all other options including above are passed to ioredis
- * @returns {Object} Redis instance
+ * @param   {Object}    opts
+ * @param   {Boolean}   opts.isRedisCluster redis is cluster
+ * @param   {Object}    opts.client         redis client (overides all other options except db
+ *                                          and duplicate)
+ * @param   {String}    opts.socket         redis socket (DEPRECATED: use 'path' instead)
+ * @param   {String}    opts.db             redis db
+ * @param   {Boolean}   opts.duplicate      if own client object, will use node redis's
+ *                                          duplicatefunction and pass other options
+ * @param   {String}    opts.password       redis password
+ * @param   {String}    opts.name
+ * @param   {Object[]}  opts.sentinelRootNodes
+ * @param   {Object}    opts.sentinelClientOptions
+ * @param   {String}    opts.sentinelClientOptions.username
+ * @param   {String}    opts.sentinelClientOptions.password
+ * @param   {Object}    opts.sentinelClientOptions.socket
+ * @param   {Boolean}   opts.sentinelClientOptions.socket.tls
+ * @param   {Boolean}   opts.sentinelClientOptions.socket.rejectUnauthorized
+ * @param   {Blob}      opts.sentinelClientOptions.socket.ca
+ * @param   {Object}    opts.nodeClientOptions
+ * @param   {String}    opts.nodeClientOptions.username
+ * @param   {String}    opts.nodeClientOptions.password
+ * @param   {Object}    opts.nodeClientOptions.socket
+ * @param   {Boolean}   opts.nodeClientOptions.socket.tls
+ * @param   {Boolean}   opts.nodeClientOptions.socket.rejectUnauthorized
+ * @param   {Blob}      opts.nodeClientOptions.socket.ca
+ * @param   {String}    opts.role
+ * @param   {Any}       [any]               all other options including above passed to redis
+ * @returns {Object}    Redis instance
  */
-function RedisStore(opts) {
-  if (!(this instanceof RedisStore)) {
-    return new RedisStore(opts)
+// function RedisStore(opts) {
+class RedisStore extends EventEmitter {
+  constructor(opts) {
+    super()
+    // if (!(this instanceof RedisStore)) {
+    //   return new RedisStore(opts)
+    // }
+    // EventEmitter.call(this)
+    this.client = null
+    this.options = opts || {}
   }
 
-  EventEmitter.call(this)
-  const options = opts || {}
+  async init(opts) {
+    this.options = { ...opts }
+    debug('koa-redis redisStore init opts', opts)
+    // For backwards compatibility
+    this.options.password = this.options.password
+      || this.options.auth_pass
+      || this.options.pass
+      || null
+    // For backwards compatibility
+    this.options.path = this.options.path
+      || this.options.socket
+      || null
 
-  let client
-  // For backwards compatibility
-  options.password = options.password || options.auth_pass || options.pass || null
-  // For backwards compatibility
-  options.path = options.path || options.socket || null
+    if (!this.options.client) {
+      //
+      // TODO: we should probably omit custom options we have
+      // in this lib from `options` passed to instances below
+      //
+      const redisUrl = this.options.url && this.options.url.toString()
+      delete this.options.url
 
-  if (!options.client) {
-    //
-    // TODO: we should probably omit custom options we have
-    // in this lib from `options` passed to instances below
-    //
-    const redisUrl = options.url && options.url.toString()
-    delete options.url
-
-    if (options.isRedisCluster) {
-      debug('Initializing Redis Cluster')
-      delete options.isRedisCluster
-      client = new Redis.Cluster(options.nodes, options.clusterOptions)
+      if (this.options.isRedisCluster) {
+        debug('Initializing Redis Cluster')
+        delete this.options.isRedisCluster
+        this.client = await createCluster(this.options.clusterOptions)
+      } else if (this.options.sentinelRootNodes) {
+        debug('Initializing Redis Replica set with Sentinels')
+        this.client = await createSentinel(this.options)
+      } else {
+        debug('Initializing standalone Redis')
+        delete this.options.isRedisCluster
+        delete this.options.nodes
+        delete this.options.clusterOptions
+        if (redisUrl) {
+          this.client = await createClient(redisUrl, this.options)
+        } else {
+          this.client = await createClient(this.options)
+        }
+      }
+    } else if (this.options.duplicate) {
+      // Duplicate client and update with options provided
+      debug('Duplicating provided client with new options (if provided)')
+      const dupClient = this.options.client
+      delete this.options.client
+      delete this.options.duplicate
+      // Useful if you want to use the DB option without
+      // adjusting the client DB outside koa-redis
+      this.client = dupClient.duplicate(this.options)
     } else {
-      debug('Initializing Redis')
-      delete options.isRedisCluster
-      delete options.nodes
-      delete options.clusterOptions
-      client = redisUrl ? new Redis(redisUrl, options) : new Redis(options)
+      debug('Using provided client')
+      this.client = this.options.client
     }
-  } else if (options.duplicate) {
-    // Duplicate client and update with options provided
-    debug('Duplicating provided client with new options (if provided)')
-    const dupClient = options.client
-    delete options.client
-    delete options.duplicate
-    // Useful if you want to use the DB option without
-    // adjusting the client DB outside koa-redis
-    client = dupClient.duplicate(options)
-  } else {
-    debug('Using provided client')
-    client = options.client
-  }
+    this.client
+      .on('error', (err) => console.log('Redis Client Error', err))
+      .connect()
 
-  if (options.db) {
-    debug('selecting db %s', options.db)
-    client.select(options.db)
-    client.on('connect', () => {
-      client.send_anyways = true
-      client.select(options.db)
-      client.send_anyways = false
+    if (this.options.db) {
+      debug('selecting db %s', this.options.db)
+      this.client.select(this.options.db)
+      this.client.on('connect', () => {
+        this.client.send_anyways = true
+        this.client.select(this.options.db)
+        this.client.send_anyways = false
+      })
+    }
+
+    ['connect', 'ready', 'error', 'close', 'reconnecting', 'end'].forEach(
+      (name) => {
+        this.on(name, () => debug(`redis ${name}`))
+        this.client.on(name, this.emit.bind(this, name))
+      },
+    )
+
+    // For backwards compatibility
+    this.client.on('end', this.emit.bind(this, 'disconnect'))
+
+    // this.client = client
+
+    Object.defineProperty(this, 'status', {
+      get() {
+        return this.client.status
+      },
     })
+
+    Object.defineProperty(this, 'connected', {
+      get() {
+        return ['connect', 'ready'].includes(this.status)
+      },
+    })
+
+    // Support optional serialize and unserialize
+    this.serialize = (
+      typeof this.options.serialize === 'function' && this.options.serialize
+    ) || JSON.stringify
+    this.unserialize = (
+      typeof this.options.unserialize === 'function' && this.options.unserialize
+    ) || JSON.parse
+
+    // return the connected redis client instance
+    return this
   }
 
-  ['connect', 'ready', 'error', 'close', 'reconnecting', 'end'].forEach(
-    (name) => {
-      this.on(name, () => debug(`redis ${name}`))
-      client.on(name, this.emit.bind(this, name))
-    },
-  )
+  // util.inherits(RedisStore, EventEmitter)
 
-  // For backwards compatibility
-  client.on('end', this.emit.bind(this, 'disconnect'))
-
-  this.client = client
-
-  Object.defineProperty(this, 'status', {
-    get() {
-      return this.client.status
-    },
-  })
-
-  Object.defineProperty(this, 'connected', {
-    get() {
-      return ['connect', 'ready'].includes(this.status)
-    },
-  })
-
-  // Support optional serialize and unserialize
-  this.serialize = (typeof options.serialize === 'function' && options.serialize)
-    || JSON.stringify
-  this.unserialize = (typeof options.unserialize === 'function' && options.unserialize)
-    || JSON.parse
-}
-
-util.inherits(RedisStore, EventEmitter)
-
-RedisStore.prototype.get = function*(sid) {
-  const data = yield this.client.get(sid)
-  debug('get session: %s', data || 'none')
-  if (!data) {
-    return null
+  async ping() {
+    return this.client.ping()
   }
 
-  try {
-    return this.unserialize(data.toString())
-  } catch (err) {
-    // ignore err
-    debug('parse session error: %s', err.message)
-  }
-}
-
-RedisStore.prototype.set = function*(sid, _sess, _ttl) {
-  let ttl
-  if (typeof ttl === 'number') {
-    ttl = Math.ceil(_ttl / 1000)
-  }
-
-  const sess = this.serialize(_sess)
-  if (ttl) {
-    debug('SETEX %s %s %s', sid, ttl, sess)
-    yield this.client.setex(sid, ttl, sess)
-  } else {
-    debug('SET %s %s', sid, sess)
-    yield this.client.set(sid, sess)
+  async get(sid) {
+    let result
+    const data = await this.client.get(sid)
+    debug('get session: %s', data || 'none')
+    if (!data) {
+      return null
+    }
+    try {
+      result = this.unserialize(data.toString())
+    } catch (err) {
+      // ignore err
+      debug('parse session error: %s', err.message)
+    }
+    return result
   }
 
-  debug('SET %s complete', sid)
-}
+  async set(sid, _sess, _ttl) {
+    let ttl
+    if (typeof ttl === 'number') {
+      ttl = Math.ceil(_ttl / 1000)
+    }
+    const sess = this.serialize(_sess)
+    if (ttl) {
+      debug('SETEX %s %s %s', sid, ttl, sess)
+      await this.client.setex(sid, ttl, sess)
+    } else {
+      debug('SET %s %s', sid, sess)
+      await this.client.set(sid, sess)
+    }
+    debug('SET %s complete', sid)
+  }
 
-RedisStore.prototype.destroy = function*(sid) {
-  debug('DEL %s', sid)
-  yield this.client.del(sid)
-  debug('DEL %s complete', sid)
-}
+  async destroy(sid) {
+    debug('DEL %s', sid)
+    await this.client.del(sid)
+    debug('DEL %s complete', sid)
+  }
 
-RedisStore.prototype.quit = function*() {
-  // End connection SAFELY
-  debug('quitting redis client')
-  yield this.client.quit()
-}
+  async quit() {
+    // End connection SAFELY
+    debug('quitting redis client')
+    await this.client.quit()
+  }
 
+  async end() {
+    // End connection SAFELY
+    debug('quitting redis client')
+    await this.client.quit()
+  }
+}
 // wrap(RedisStore.prototype)
 
 // End connection SAFELY. The real end() command should
 // never be used, as it cuts off to queue.
-RedisStore.prototype.end = RedisStore.prototype.quit
+// RedisStore.prototype.end = RedisStore.prototype.quit
 
-export { RedisStore }
+const _redis = new RedisStore()
+export { _redis as redisStore }
