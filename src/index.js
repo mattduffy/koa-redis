@@ -39,6 +39,10 @@ const debug = Debug('koa-redis')
  * @param   {Boolean}   opts.duplicate      if own client object, will use node redis's
  *                                          duplicatefunction and pass other options
  * @param   {String}    opts.password       redis password
+ * @param   {String}    [opts.redisUrl]
+ * @param   {Boolean}   [opts.isRedisSingle = false]
+ * @param   {Boolean}   [opts.isRedisReplset = false]
+ * @param   {Boolean}   [opts.isRedisCluster = false]
  * @param   {String}    opts.name
  * @param   {String}    opts.keyPrefix
  * @param   {Object[]}  opts.sentinelRootNodes
@@ -71,11 +75,16 @@ class RedisStore extends EventEmitter {
     this.client = null
     this.keyPrefix = ''
     this.options = opts || {}
+    this.clientType = null
   }
 
   async init(opts) {
+    this.options.isRedisSingle = false
+    this.options.isRedisReplset = false
+    this.options.isRedisCluster = false
+    this.options.redisUrl = false
     this.options = { ...opts }
-    debug('koa-redis redisStore init opts', opts)
+    debug('redisStore init opts', opts)
     if (this.options) {
       this.keyPrefix = this.options.keyPrefix
     }
@@ -90,29 +99,51 @@ class RedisStore extends EventEmitter {
       || null
 
     if (!this.options.client) {
-      //
-      // TODO: we should probably omit custom options we have
-      // in this lib from `options` passed to instances below
-      //
-      const redisUrl = this.options.url && this.options.url.toString()
-      delete this.options.url
+      // const redisUrl = this.options.url && this.options.url.toString()
+      // delete this.options.url
 
       if (this.options.isRedisCluster) {
         debug('Initializing Redis Cluster')
         delete this.options.isRedisCluster
+        delete this.options.isRedisSingle
+        delete this.options.isRedisReplset
         this.client = await createCluster(this.options.clusterOptions)
-      } else if (this.options.sentinelRootNodes) {
+        this.clientType = 'cluster'
+      } else if (this.options.sentinelRootNodes
+        && this.options.isRedisReplset
+        && !this.options.isRedisCluster) {
+        delete this.options.isRedisSingle
+        delete this.options.isRedisReplset
+        delete this.options.isRedisCluster
         debug('Initializing Redis Replica set with Sentinels')
         this.client = await createSentinel(this.options)
+        this.clientType = 'sentinel'
       } else {
         debug('Initializing standalone Redis')
+        delete this.options.isRedisSingle
+        delete this.options.isRedisReplset
         delete this.options.isRedisCluster
-        delete this.options.nodes
         delete this.options.clusterOptions
-        if (redisUrl) {
-          this.client = await createClient(redisUrl, this.options)
+        delete this.options.nodes
+        if (this.options.redisUrl) {
+          this.client = await createClient(this.options.redisUrl, this.options)
         } else {
+          if (this.options.url) {
+            debug('standalone client, converting url to parts:', this.options.url)
+            const url = new URL(this.options.url)
+            if (!this.options.socket) {
+              this.options.socket = {}
+            }
+            this.options.socket.host = url.hostname
+            this.options.socket.port = url.port
+            this.options.username = url.username
+            this.options.password = url.password
+            delete this.options.url
+          }
+          debug('standalone opts', this.options)
           this.client = await createClient(this.options)
+          this.clientType = 'single'
+          debug('client created?', this.client)
         }
       }
     } else if (this.options.duplicate) {
@@ -230,7 +261,13 @@ class RedisStore extends EventEmitter {
   async quit() {
     // End connection SAFELY
     debug('quitting redis client')
-    await this.client.quit()
+    if (this.clientType === 'cluster') {
+      await this.client.close()
+    } else if (this.clientType === 'sentinel') {
+      await this.client.close()
+    } else {
+      await this.client.quit()
+    }
   }
 
   async end() {
@@ -246,4 +283,7 @@ class RedisStore extends EventEmitter {
 // RedisStore.prototype.end = RedisStore.prototype.quit
 
 const _redis = new RedisStore()
-export { _redis as redisStore }
+export {
+  RedisStore,
+  _redis as redisStore,
+}

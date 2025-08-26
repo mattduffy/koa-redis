@@ -16,4 +16,6 @@ node_modules
 .DS_Store
 .idea
 lib
-*/*.env
+config/*.env
+test/*.env
+config/keys/redis/*pem
