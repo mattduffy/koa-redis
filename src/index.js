@@ -269,8 +269,8 @@ class RedisStore extends EventEmitter {
   async destroy(_sid) {
     const sid = `${this.keyPrefix}${_sid}`
     debug('DEL %s', sid)
-    await this.client.del(sid)
-    debug('DEL %s complete', sid)
+    return this.client.del(sid)
+    // debug('DEL %s complete', sid)
   }
 
   async quit() {
