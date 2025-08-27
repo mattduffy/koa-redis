@@ -1,3 +1,10 @@
+/**
+ * @module @mattduffy/koa-redis
+ * @author Matthew Duffy <mattduffy@gmail.com>
+ * @summary A fork of the original koa/koa-redis package.  This fork replaces ioredis with the
+ *          official node-redis package, with support for sentinels and clusters.
+ * @file src/index.js
+ */
 /** !
  * koa-redis - index.js
  * Copyright(c) 2015
@@ -31,11 +38,10 @@ const debug = Debug('koa-redis')
  * Initialize redis session middleware with `opts` (see the README for more info):
  *
  * @param   {Object}    opts
- * @param   {Boolean}   opts.isRedisCluster redis is cluster
+ * @param   {String}    opts.db             redis db
  * @param   {Object}    opts.client         redis client (overides all other options except db
  *                                          and duplicate)
  * @param   {String}    opts.socket         redis socket (DEPRECATED: use 'path' instead)
- * @param   {String}    opts.db             redis db
  * @param   {Boolean}   opts.duplicate      if own client object, will use node redis's
  *                                          duplicatefunction and pass other options
  * @param   {String}    opts.password       redis password
@@ -44,7 +50,7 @@ const debug = Debug('koa-redis')
  * @param   {Boolean}   [opts.isRedisReplset = false]
  * @param   {Boolean}   [opts.isRedisCluster = false]
  * @param   {String}    opts.name
- * @param   {String}    opts.keyPrefix
+ * @param   {String}    [opts.keyPrefix]
  * @param   {Object[]}  opts.sentinelRootNodes
  * @param   {Object}    opts.sentinelClientOptions
  * @param   {String}    opts.sentinelClientOptions.username
@@ -61,23 +67,41 @@ const debug = Debug('koa-redis')
  * @param   {Boolean}   opts.nodeClientOptions.socket.rejectUnauthorized
  * @param   {Blob}      opts.nodeClientOptions.socket.ca
  * @param   {String}    opts.role
+ * @param   {Object[]}  opts.rootNodes
+ * @param   {Object}    opts.defaults
+ * @param   {Object}    opts.defaults.username
+ * @param   {Object}    opts.defaults.password
+ * @param   {Object}    [opts.defaults.socket]
+ * @param   {Boolean}   [opts.defaults.socket.tls]
+ * @param   {Boolean}   [opts.defaults.socket.rejectUnauthorized]
+ * @param   {Blob}      [opts.defaults.socket.ca]
  * @param   {Any}       [any]               all other options including above passed to redis
  * @returns {Object}    Redis instance
  */
-// function RedisStore(opts) {
 class RedisStore extends EventEmitter {
+  /**
+   * The RedisStore constructor method.
+   * @summary Returns an instance, with an empty redis client placeholder.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @param {Object} [opts] - An optional options object.
+   * @returns {RedisStore}
+   */
   constructor(opts) {
     super()
-    // if (!(this instanceof RedisStore)) {
-    //   return new RedisStore(opts)
-    // }
-    // EventEmitter.call(this)
     this.client = null
+    this.clientType = null
     this.keyPrefix = ''
     this.options = opts || {}
-    this.clientType = null
   }
 
+  /**
+   * Initialized an instance of the RedisStore class with redis client config object.
+   * @summary Initialized an instance of the RedisStore class with redis client config object.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @param {Object} opts - Redis client configuration options.
+   * @return {RedisStore} Returns the instance with a configured and connected redis client.
+   */
   async init(opts) {
     this.options.isRedisSingle = false
     this.options.isRedisReplset = false
@@ -86,7 +110,7 @@ class RedisStore extends EventEmitter {
     this.options = { ...opts }
     // debug('redisStore init opts', opts)
     if (this.options) {
-      this.keyPrefix = this.options.keyPrefix
+      this.keyPrefix = this.options?.keyPrefix || ''
     }
     // For backwards compatibility
     this.options.password = this.options.password
@@ -211,10 +235,25 @@ class RedisStore extends EventEmitter {
 
   // util.inherits(RedisStore, EventEmitter)
 
+  /**
+   *  Returns PONG if no argument is provided.
+   *  @summary Returns PONG if no argument is provided.
+   *  @author Matthew Duffy <mattduffy@gmail.com>
+   *  @async
+   *  @return {string} The string 'PONG'
+   */
   async ping() {
     return this.client.ping()
   }
 
+  /**
+   *  Returns the string value of the given key.
+   *  @summary Returns the string value of the given key.
+   *  @author Matthew Duffy <mattduffy@gmail.com>
+   *  @async
+   *  @param {string} _sid - The name of the key whose value is returned.
+   *  @return {string|null} The value of 'key' or nil if key does not exist.
+   */
   async get(_sid) {
     let result
     const sid = `${this.keyPrefix}${_sid}`
@@ -233,6 +272,16 @@ class RedisStore extends EventEmitter {
     return result
   }
 
+  /**
+   * Set the given key to the given value.
+   * @summary Set the given key to the given value, optionally with expiry time.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @param {string} _sid - The name of the key whose value is to be set.
+   * @param {string|Object} _sess - The value to be set on key <_sid>.
+   * @param {number} [_ttl] - An optional time in seconds before key expires.
+   * @return {undefined}
+   */
   async set(_sid, _sess, _ttl) {
     let ttl
     const sid = `${this.keyPrefix}${_sid}`
@@ -258,6 +307,15 @@ class RedisStore extends EventEmitter {
     debug('SET %s complete', sid)
   }
 
+  /**
+   * Returns the remaining time to live of a key.
+   * @summary Returns the remaining time to live of a key.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @param {string} _key - The key whose expiry time is requested.
+   * @return {number} The number of seconds remaining before expiration (-2 if key does
+   *                  not exist, -1 if the key has no expiration set).
+   */
   async ttl(_key) {
     debug(
       `client.ttl(${this.keyPrefix}${_key}`,
@@ -266,6 +324,14 @@ class RedisStore extends EventEmitter {
     return this.client.ttl(`${this.keyPrefix}${_key}`)
   }
 
+  /**
+   * Removes the specified key.
+   * @summary Removes the specified key.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @param {string} _sid - The key to be deleted.
+   * @return {number} The number of keys successfully deleted.
+   */
   async destroy(_sid) {
     const sid = `${this.keyPrefix}${_sid}`
     debug('DEL %s', sid)
@@ -273,22 +339,38 @@ class RedisStore extends EventEmitter {
     // debug('DEL %s complete', sid)
   }
 
+  /**
+   * Ask the server to close the connection.
+   * @summary Ask the server to close the connection.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @return {undefined}
+   */
   async quit() {
     // End connection SAFELY
     debug('quitting redis client')
+    let _quit
     if (this.clientType === 'cluster') {
-      await this.client.close()
+      _quit = await this.client.close()
     } else if (this.clientType === 'sentinel') {
-      await this.client.close()
+      _quit = await this.client.close()
     } else {
-      await this.client.quit()
+      _quit = await this.client.quit()
     }
+    return _quit
   }
 
+  /**
+   * Ask the server to close the connection.
+   * @summary Ask the server to close the connection.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @borrows quit as end
+   */
   async end() {
     // End connection SAFELY
     debug('quitting redis client')
-    await this.client.quit()
+    return this.client.quit()
   }
 }
 // wrap(RedisStore.prototype)
