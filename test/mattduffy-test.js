@@ -18,7 +18,7 @@ import * as Dotenv from 'dotenv'
 import Debug from 'debug'
 // import { redisStore } from '../src/index.js'
 
-const log = Debug('koa-redis')
+const log = Debug('TESTING')
 const env = path.resolve('.', 'config/redis.env')
 const redisEnv = {}
 log('dotenv config file:', env)
@@ -102,6 +102,24 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     }
   }
 
+  class Cluster {
+    config = {}
+
+    constructor() {
+      this.config.rootNodes = []
+      this.config.defaults = {
+        username: redisEnv.REDIS_USER,
+        password: redisEnv.REDIS_PASSWORD,
+      }
+      if (redisEnv.REDIS_CACERT !== '') {
+        this.config.socket = {}
+        this.config.nodeClientOptions.socket.tls = true
+        this.config.nodeClientOptions.socket.rejectUnauthorized = false
+        this.config.nodeClientOptions.socket.ca = fs.readFileSync(redisEnv.REDIS_CACERT)
+      }
+    }
+  }
+
   before(async () => {
 
   })
@@ -150,6 +168,36 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     await redisClient.quit()
   })
 
+  it('Redis standalone should set a key.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'key:1'
+    const val = { a: 2 }
+    await redisClient.set(key, val)
+    const check = await redisClient.get(key)
+    log(`checking the returned value of key ${keyPrefix}${key}`, check)
+    assert.equal(val.a, check.a)
+    await redisClient.quit()
+  })
+
+  it('Redis standalone should set a key with ttl.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'key:ttl:2'
+    const val = { a: 2 }
+    const ttl = 86400
+    await redisClient.set(key, val, ttl)
+    const check = await redisClient.ttl(key)
+    // log(`checking the returned ttl ${keyPrefix}${key}`, check)
+    // log(`(ttl ${ttl} > check ${check}) && (check ${check} > 0)`, (ttl > check) && (check > 0))
+    assert.equal(ttl, check)
+    await redisClient.quit()
+  })
+
   it('Redis replset should connect and acknowledge a PING', async () => {
     const replset = new Replset()
     const {
@@ -160,5 +208,17 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     redisReplset = await _redisReplset.init(replset.config)
     assert(await redisReplset.ping() === 'PONG')
     await redisReplset.quit()
+  })
+
+  it('Redis cluster should connect and acknowledge a PING', skip, async () => {
+    const cluster = new Cluster()
+    const {
+      RedisStore,
+      // redisStore,
+    } = await import('../src/index.js')
+    const _redisCluster = new RedisStore()
+    redisCluster = await _redisCluster.init(cluster.config)
+    assert(await redisCluster.ping() === 'PONG')
+    await redisCluster.quit()
   })
 })
