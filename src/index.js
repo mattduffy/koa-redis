@@ -107,6 +107,7 @@ class RedisStore extends EventEmitter {
     this.options.isRedisReplset = false
     this.options.isRedisCluster = false
     this.options.redisUrl = false
+    this.options.lazyConnect = false
     this.options = { ...opts }
     // debug('redisStore init opts', opts)
     if (this.options) {
@@ -183,9 +184,6 @@ class RedisStore extends EventEmitter {
       debug('Using provided client')
       this.client = this.options.client
     }
-    this.client
-      .on('error', (err) => console.log('Redis Client Error', err))
-      .connect()
 
     if (this.options.db) {
       debug('selecting db %s', this.options.db)
@@ -209,17 +207,17 @@ class RedisStore extends EventEmitter {
 
     // this.client = client
 
-    Object.defineProperty(this, 'status', {
-      get() {
-        return this.client.status
-      },
-    })
+    // Object.defineProperty(this, 'status', {
+    //   get() {
+    //     return this.client.status
+    //   },
+    // })
 
-    Object.defineProperty(this, 'connected', {
-      get() {
-        return ['connect', 'ready'].includes(this.status)
-      },
-    })
+    // Object.defineProperty(this, 'connected', {
+    //   get() {
+    //     return ['connect', 'ready'].includes(this.status)
+    //   },
+    // })
 
     // Support optional serialize and unserialize
     this.serialize = (
@@ -230,6 +228,7 @@ class RedisStore extends EventEmitter {
     ) || JSON.parse
 
     // return the connected redis client instance
+    await this.client.connect()
     return this
   }
 
@@ -371,6 +370,47 @@ class RedisStore extends EventEmitter {
     // End connection SAFELY
     debug('quitting redis client')
     return this.client.quit()
+  }
+
+  /**
+   * Check if the the client is connected and ready to send commands.
+   * @summary Check if the the client is connected and ready to send commands.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @type {boolean}
+   */
+  get isReady() {
+    return this.client.isReady
+  }
+
+  /**
+   * Check if the the client is connected and ready to send commands.
+   * @summary Check if the the client is connected and ready to send commands.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @type {boolean}
+   */
+  get isOpen() {
+    return this.client.isOpen
+  }
+
+  /**
+   * Should return the current state of the redis client [ready, waiting, etc], but currently
+   * the client seems to only return 'undefined'.
+   * @summary Should return the current state of the redis client [ready, waiting, etc].
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @type {undefined}
+   */
+  get status() {
+    return this.client.status
+  }
+
+  /**
+   * Returns true if the client is connected and ready.
+   * @summary Returns true if the client is connected and ready.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @type {boolean}
+   */
+  get connected() {
+    return this.client.isReady
   }
 }
 // wrap(RedisStore.prototype)
