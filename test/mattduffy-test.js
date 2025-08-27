@@ -42,11 +42,11 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
 
     constructor() {
       log('creating standalone redis client config object')
+      this.config.keyPrefix = keyPrefix
       this.config.isRedisCluster = false
       this.config.isRedisReplSet = false
       this.config.username = redisEnv.REDIS_USER
       this.config.password = redisEnv.REDIS_PASSWORD
-      this.config.keyPrefix = keyPrefix
       this.config.socket = {
         port: redisEnv.REDIS_HOST_PORT,
         host: redisEnv.REDIS_HOST,
@@ -106,6 +106,7 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     config = {}
 
     constructor() {
+      this.config.keyPrefix = keyPrefix
       this.config.isRedisCluster = true
       this.config.isRedisReplset = false
       this.config.rootNodes = []
@@ -131,10 +132,10 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
       // await redisClient.quit()
     }
     if (redisReplset) {
-      await redisReplset.quit()
+      // await redisReplset.quit()
     }
     if (redisCluster) {
-      await redisCluster.quit()
+      // await redisCluster.quit()
     }
   })
 
@@ -170,12 +171,27 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     await redisClient.quit()
   })
 
-  it('Redis standalone should set a key.', async () => {
+  it('Redis standalone should set a key (keyPrefix included).', async () => {
     const standalone = new Standalone()
     const { RedisStore } = await import('../src/index.js')
     const _r = new RedisStore()
     redisClient = await _r.init(standalone.config)
     const key = 'key:1'
+    const val = { a: 2 }
+    await redisClient.set(key, val)
+    const check = await redisClient.get(key)
+    log(`checking the returned value of key ${keyPrefix}${key}`, check)
+    assert.equal(val.a, check.a)
+    await redisClient.quit()
+  })
+
+  it('Redis standalone should set a key (keyPrefix NOT included).', async () => {
+    const standalone = new Standalone()
+    delete standalone.config.keyPrefix
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'test:koa-redis:key:2'
     const val = { a: 2 }
     await redisClient.set(key, val)
     const check = await redisClient.get(key)
@@ -251,7 +267,7 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     const _redisReplset = new RedisStore()
     redisReplset = await _redisReplset.init(replset.config)
     assert(await redisReplset.ping() === 'PONG')
-    await redisReplset.quit()
+    log('what does quit say?', await redisReplset.quit())
   })
 
   it('Redis cluster should connect and acknowledge a PING', skip, async () => {
