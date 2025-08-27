@@ -106,6 +106,8 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     config = {}
 
     constructor() {
+      this.config.isRedisCluster = true
+      this.config.isRedisReplset = false
       this.config.rootNodes = []
       this.config.defaults = {
         username: redisEnv.REDIS_USER,
@@ -193,8 +195,50 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     await redisClient.set(key, val, ttl)
     const check = await redisClient.ttl(key)
     // log(`checking the returned ttl ${keyPrefix}${key}`, check)
-    // log(`(ttl ${ttl} > check ${check}) && (check ${check} > 0)`, (ttl > check) && (check > 0))
     assert.equal(ttl, check)
+    await redisClient.quit()
+  })
+
+  it('Expired key should return -2.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'key:ttl:3'
+    const val = { a: 3 }
+    const ttl = 1
+    await redisClient.set(key, val, ttl)
+    await new Promise((resolve) => { setTimeout(resolve, 2000) })
+    const check = await redisClient.ttl(key)
+    log(`checking the returned ttl ${keyPrefix}${key}`, check)
+    assert.equal(check, -2)
+    await redisClient.quit()
+  })
+
+  it('should not throw an error with bad JSON', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'key:badKey:3'
+    // const val = { I will cause an error! }
+    await redisClient.set(key, '{ I will cause an error! }')
+    const check = await redisClient.get(key)
+    log(`checking the returned key ${keyPrefix}${key}`, check)
+    assert.equal('{ I will cause an error! }', check)
+    await redisClient.quit()
+  })
+
+  it('destroy a key', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'key:destroy:4'
+    await redisClient.set(key, { a: 4 })
+    const check = await redisClient.destroy(key)
+    log('destroy', check)
+    assert(check > 0)
     await redisClient.quit()
   })
 
