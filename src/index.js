@@ -84,7 +84,7 @@ class RedisStore extends EventEmitter {
     this.options.isRedisCluster = false
     this.options.redisUrl = false
     this.options = { ...opts }
-    debug('redisStore init opts', opts)
+    // debug('redisStore init opts', opts)
     if (this.options) {
       this.keyPrefix = this.options.keyPrefix
     }
@@ -129,7 +129,7 @@ class RedisStore extends EventEmitter {
           this.client = await createClient(this.options.redisUrl, this.options)
         } else {
           if (this.options.url) {
-            debug('standalone client, converting url to parts:', this.options.url)
+            // debug('standalone client, converting url to parts:', this.options.url)
             const url = new URL(this.options.url)
             if (!this.options.socket) {
               this.options.socket = {}
@@ -140,7 +140,7 @@ class RedisStore extends EventEmitter {
             this.options.password = url.password
             delete this.options.url
           }
-          debug('standalone opts', this.options)
+          // debug('standalone opts', this.options)
           this.client = await createClient(this.options)
           this.clientType = 'single'
           debug('client created?', this.client)
@@ -236,19 +236,34 @@ class RedisStore extends EventEmitter {
   async set(_sid, _sess, _ttl) {
     let ttl
     const sid = `${this.keyPrefix}${_sid}`
-    debug(`koa-redis->set(${sid}, ${_sess}, ${_ttl})`)
-    if (typeof ttl === 'number') {
-      ttl = Math.ceil(_ttl / 1000)
-    }
     const sess = this.serialize(_sess)
+    console.log('%o', sess)
+    // eslint-disable-next-line
+    debug(`koa-redis->set(${sid}, ${sess}${_ttl ? ', { EX: ' + _ttl + ' }': ''})`)
+    if (typeof _ttl === 'number') {
+      // ttl = Math.ceil(_ttl / 1000)
+      // keep the value as seconds, not milliseconds
+      ttl = Math.ceil(_ttl)
+      debug('ttl', ttl)
+    }
     if (ttl) {
-      debug('SETEX %s %s %s', sid, ttl, sess)
-      await this.client.setex(sid, ttl, sess)
+      // debug('SETEX %s %s %s', sid, ttl, sess)
+      debug('SET %s %s %o', sid, sess, { EX: ttl })
+      // await this.client.setex(sid, ttl, sess)
+      await this.client.set(sid, sess, { EX: ttl })
     } else {
       debug('SET %s %s', sid, sess)
       await this.client.set(sid, sess)
     }
     debug('SET %s complete', sid)
+  }
+
+  async ttl(_key) {
+    debug(
+      `client.ttl(${this.keyPrefix}${_key}`,
+      await this.client.ttl(`${this.keyPrefix}${_key}`),
+    )
+    return this.client.ttl(`${this.keyPrefix}${_key}`)
   }
 
   async destroy(_sid) {
