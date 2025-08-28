@@ -1,313 +1,160 @@
-# koa-redis
-
-[![build status][travis-image]][travis-url]
-[![Coveralls][coveralls-image]][coveralls-url]
-[![David deps][david-image]][david-url]
-[![David devDeps][david-dev-image]][david-dev-url]
-[![license][license-image]][license-url]
-[![code style](https://img.shields.io/badge/code_style-XO-5ed9c7.svg?style=flat-square)](https://github.com/sindresorhus/xo)
-[![styled with prettier](https://img.shields.io/badge/styled_with-prettier-ff69b4.svg?style=flat-square)](https://github.com/prettier/prettier)
-[![made with lass](https://img.shields.io/badge/made_with-lass-95CC28.svg?style=flat-square)](https://lass.js.org)
-
-> Redis storage for Koa session middleware/cache with Sentinel and Cluster support
-
-[![NPM](https://nodei.co/npm/koa-redis.svg?downloads=true)](https://nodei.co/npm/koa-redis/)
-
-**v4.0.0+ now uses `ioredis` and has support for Sentinel and Cluster!**
-
-
-## Table of Contents
-
-* [Install](#install)
-* [Usage](#usage)
-  * [Basic](#basic)
-  * [Sentinel](#sentinel)
-  * [Cluster](#cluster)
-* [Options](#options)
-* [Events](#events)
-* [API](#api)
-  * [module(options)](#moduleoptions)
-  * [session.get(sid)](#sessiongetsid)
-  * [session.set(sid, sess, ttl)](#sessionsetsid-sess-ttl)
-  * [session.destroy(sid)](#sessiondestroysid)
-  * [session.quit()](#sessionquit)
-  * [session.end()](#sessionend)
-  * [session.status](#sessionstatus)
-  * [session.connected](#sessionconnected)
-  * [session.client](#sessionclient)
-* [Benchmark](#benchmark)
-* [Testing](#testing)
-* [License](#license)
-* [Contributors](#contributors)
-
+# @mattduffy/koa-redis
+This is a fork of the [koa-redis](https://www.npmjs.com/package/koa-redis) package, updated to work with the official [Redis](https://www.npmjs.com/package/redis) client library, rather than [ioredis](https://www.npmjs.com/package/ioredis), now that it fully supports connecting to redis sentinel hosts.  This package is almost completely api-compatible with the original koa-redis package, with the exception of supporting `async/await` methods and a `redisStore.init(config)` initialization method.
 
 ## Install
-
-[npm][]:
-
-```sh
-npm install koa-redis
+```bash
+npm install --save @mattduffy/koa-redis
 ```
-
-[yarn][]:
-
-```sh
-yarn add koa-redis
-```
-
 
 ## Usage
+`@mattduffy/koa-redis` works with [koa-session](https://www.npmjs.com/package/koa-session)@7.x.  It is not compatible with koa-session@6.x as it only supports ESM style imports.  Please see the koa-session documentation for a full explanation of how to implement session handling in a Koa app.  In general, structure the client connection options object like you normally would for a regular redis client.  There is a small number of `RedisStore` specific options to use, but they all have default values to create a simple, standalone redis client connection.
 
-`koa-redis` works with [koa-generic-session](https://github.com/koajs/generic-session) (a generic session middleware for koa).
-
-For more examples, please see the [examples folder of `koa-generic-session`](https://github.com/koajs/generic-session/tree/master/example).
-
-### Basic
-
-```js
-const session = require('koa-generic-session');
-const redisStore = require('koa-redis');
-const koa = require('koa');
-
-const app = koa();
-app.keys = ['keys', 'keykeys'];
+```javascript
+import * as Koa from 'koa'
+import session from 'koa-session'
+import { redisStore } from '@mattduffy/koa-redis'
+// simple standalone redis host
+const redisConfigOpts = {
+  url: "redis://username:password@<redis_host>:<redis_port>",
+}
+const redis = await (new redisStore()).init(redisConfigOpts)
+const app = new Koa.default()
 app.use(session({
-  store: redisStore({
-    // Options specified here
-  })
-}));
-
-app.use(function *() {
-  switch (this.path) {
-  case '/get':
-    get.call(this);
-    break;
-  case '/remove':
-    remove.call(this);
-    break;
-  case '/regenerate':
-    yield regenerate.call(this);
-    break;
-  }
-});
-
-function get() {
-  const session = this.session;
-  session.count = session.count || 0;
-  session.count++;
-  this.body = session.count;
-}
-
-function remove() {
-  this.session = null;
-  this.body = 0;
-}
-
-function *regenerate() {
-  get.call(this);
-  yield this.regenerateSession();
-  get.call(this);
-}
-
-app.listen(8080);
+  store: redis,
+  ...
+}))
 ```
 
-### Sentinel
-
-```js
-const session = require('koa-generic-session');
-const redisStore = require('koa-redis');
-const koa = require('koa');
-
-const app = koa();
-app.keys = ['keys', 'keykeys'];
+### Sentinel Support
+```javascript
+const redisSentinelOpts = {
+  isRedisReplset: true,
+  name: <your_replicaset_name>,
+  lazyConnect: <true|false>,
+  role: 'master',
+  sentinelRootNodes: [
+    { host: '192.168.1.145', port: 6379 },
+    { host: '192.168.1.146', port: 6379 },
+    { host: '192.168.1.147', port: 6379 },
+  ],
+  sentinelClientOptions: {
+    username: <your_sentinel_user>,
+    password: <your_sentinel_password>,
+    // optional TLS settings
+    socket: {
+      tls: true,
+      ca: <path_to_your_ca_cert_pem_file>
+    },
+  },
+  nodeClientOptions: {
+    username: <your_app_db_username>,
+    password: <your_app_db_password>,
+    // optional TLS settings
+    socket: {
+      tls: true,
+      ca: <path_to_your_ca_cert_pem_file>
+    },
+  },
+}
+const sentinel = await (new redisStore()).init(redisSentinelOpts)
+const app = new Koa.default()
 app.use(session({
-  store: redisStore({
-    // Options specified here
-    // <https://github.com/luin/ioredis#sentinel>
-    sentinels: [
-      { host: 'localhost', port: 26379 },
-      { host: 'localhost', port: 26380 }
-      // ...
-    ],
-    name: 'mymaster'
-  })
-}));
-
-// ...
+  store: sentinel,
+  ... // rest of koa-session options
+}))
 ```
 
 ### Cluster
-
-```js
-const session = require('koa-generic-session');
-const redisStore = require('koa-redis');
-const koa = require('koa');
-
-const app = koa();
-app.keys = ['keys', 'keykeys'];
+```javascript
+const redisClusterOpts = {
+  isRedisCluster: true,
+  rootNodes: [
+    { url: 'redis://10.0.0.1:30001' },
+    { url: 'redis://10.0.0.2:30001' },
+    { url: 'redis://10.0.0.3:30001' },
+  ],
+  defaults: {
+    username: <your_app_db_username>,
+    password: <your_app_db_password>,
+    // optional TLS setup
+    socket: {
+      ...
+    },
+  },
+}
+const cluster = await (new redisStore()).init(redisClusterOpts)
+const app = new Koa.default()
 app.use(session({
-  store: redisStore({
-    // Options specified here
-    // <https://github.com/luin/ioredis#cluster>
-    isRedisCluster: true,
-    nodes: [
-      {
-        port: 6380,
-        host: '127.0.0.1'
-      },
-      {
-        port: 6381,
-        host: '127.0.0.1'
-      }
-      // ...
-    ],
-    // <https://github.com/luin/ioredis/blob/master/API.md#new-clusterstartupnodes-options>
-    clusterOptions: {
-      // ...
-      redisOptions: {
-        // ...
-      }
-    }
-  })
-}));
-
-// ...
+  store: cluster,
+  ... // rest of koa-session options
+}))
 ```
 
 
 ## Options
-
-* _all [`ioredis`](https://github.com/luin/ioredis/blob/master/API.md#new-redisport-host-options) options_ - Useful things include `url`, `host`, `port`, and `path` to the server. Defaults to `127.0.0.1:6379`
 * `db` (number) - will run `client.select(db)` after connection
-* `client` (object) - supply your own client, all other options are ignored unless `duplicate` is also supplied
+* `client` (object) - supply your own client, all other options are ignored unless `duplicate` is also supplied.
 * `duplicate` (boolean) - When true, it will run `client.duplicate()` on the supplied `client` and use all other options supplied. This is useful if you want to select a different DB for sessions but also want to base from the same client object.
 * `serialize` - Used to serialize the data that is saved into the store.
 * `unserialize` - Used to unserialize the data that is fetched from the store.
-* `isRedisCluster` (boolean) - Used for creating a Redis cluster instance per [`ioredis`][cluster] Cluster options, if set to `true`, then a new Redis cluster will be instantiated with `new Redis.Cluster(options.nodes, options.clusterOptions)` (see [Cluster docs][cluster] for more info).
-* `nodes` (array) - Conditionally used for creating a Redis cluster instance when `isRedisCluster` option is `true`, this is the first argument passed to `new Redis.Cluster` and contains a list of all the nodes of the cluster ou want to connect to (see [Cluster docs][cluster] for more info).
-* `clusterOptions` (object) - Conditionally used for created a Redi cluster instance when `isRedisCluster` option is `true`, this is the second argument passed to `new Redis.Cluster` and contains options, such as `redisOptions` (see [Cluster docs][cluster] for more info).
-* **DEPRECATED:** old options - `auth_pass` and `pass` have been replaced with `password`, and `socket` has been replaced with `path`, however all of these options are backwards compatible.
-
-
-## Events
-
-See the [`ioredis` docs](https://github.com/luin/ioredis#connection-events) for more info.
-
-**Note that as of v4.0.0 the `disconnect` and `warning` events are removed as `ioredis` does not support them.   The `disconnect` event is deprecated, although it is still emitted when `end` events are emitted.**
+* `isRedisCluster` (boolean) - Used for creating a Redis cluster instance.  The default value is `false`.
+* `isRedisReplset` (boolean) - Used for creating a Redis Sentinel instance.  The default value is `false`
+* `isRedisSingle` (boolean) - Used for creating a simple, standalone Redis client instance.  The default value is `true`
+* `keyPrefix` (string) - A string key prefix value, to simulate `ioredis's` transparent key prefix feature.  The default is '' (empty string).  If no prefix value is supplied when `RedisStore` is instantiated, the full key path will need to be supplied when using the `RedisStore` methods like `set(key, val, ttl)`, `get(key)`, etc.  Otherwise, if `keyPrefix` is included in the config object, simply use the key name with the methods. (keyPrefix: 'app_name:session:', key: 'user_001', full key path would be 'app_name:session:user_001')
 
 
 ## API
-
-These are some the functions that `koa-generic-session` uses that you can use manually. You will need to initialize differently than the example above:
-
-```js
-const session = require('koa-generic-session');
-const redisStore = require('koa-redis')({
-  // Options specified here
-});
-const app = require('koa')();
-
-app.keys = ['keys', 'keykeys'];
-app.use(session({
-  store: redisStore
-}));
+This package provides a minimal api, compatible with `koa-session`, but can be interacted with directly if needed.
+```javascript
+const sentinel = await (new redisStore()).init(redisSentinelOpts)
+const sess = await sentinel.get('app_1:sessions:user_0093')
+// modify the sess values
+await sentinel.set('app_1:sessions:user_0093', sess, 86400)
+// log out the user
+await sentinel.destroy('app_1:sessions:user_0093')
 ```
+### await sentinel.get(sid)
+Gets a session by ID. Returns parsed JSON is exists, `null` if it does not exist, and nothing upon error.
 
-### module([options](#options))
+### await sentinel.set(sid, sess, ttl)
+Sets a JSON session by ID with an optional time-to-live (ttl) in seconds.
 
-Initialize the Redis connection with the optionally provided options (see above). _The variable `session` below references this_.
+### await sentinel.destroy(sid)
+Destroys a session (removes it from Redis) by ID.
 
-### session.get(sid)
+### await sentinel.quit()
+Stops a Redis session after everything in the queue has completed.
 
-Generator that gets a session by ID. Returns parsed JSON is exists, `null` if it does not exist, and nothing upon error.
+### await sentinel.end()
+Alias to `sentinel.quit()`.
 
-### session.set(sid, sess, ttl)
+### sentinel.status
+A string representing the current state of the redis connection object.  Currently seems to only return `undefined`.  Don't use.
 
-Generator that sets a JSON session by ID with an optional time-to-live (ttl) in milliseconds. Yields `ioredis`'s `client.set()` or `client.setex()`.
+### sentinel.connected
+Boolean giving the connection status updated using `client.isReady`.
 
-### session.destroy(sid)
+### sentinel.isReady
+Boolean giving the connection status updated using `client.isReady`.
 
-Generator that destroys a session (removes it from Redis) by ID. Tields `ioredis`'s `client.del()`.
+### sentinel.isOpen
+Boolean giving the connection status updated using `client.isOpen`.
 
-### session.quit()
-
-Generator that stops a Redis session after everything in the queue has completed. Yields `ioredis`'s `client.quit()`.
-
-### session.end()
-
-Alias to `session.quit()`. It is not safe to use the real end function, as it cuts off the queue.
-
-### session.status
-
-String giving the connection status updated using `client.status`.
-
-### session.connected
-
-Boolean giving the connection status updated using `client.status` after any of the events above is fired.
-
-### session.client
-
-Direct access to the `ioredis` client object.
-
-
-## Benchmark
-
-| Server                  | Transaction rate      | Response time |
-| ----------------------- | --------------------- | ------------- |
-| connect without session | **6763.56 trans/sec** | **0.01 secs** |
-| koa without session     | **5684.75 trans/sec** | **0.01 secs** |
-| connect with session    | **2759.70 trans/sec** | **0.02 secs** |
-| koa with session        | **2355.38 trans/sec** | **0.02 secs** |
-
-Detailed benchmark report [here](https://github.com/koajs/koa-redis/tree/master/benchmark)
-
+### sentinel.client
+Direct access to the `redis` client object.
 
 ## Testing
-
-1. Start a Redis server on `localhost:6379`. You can use [`redis-windows`](https://github.com/ServiceStack/redis-windows) if you are on Windows or just want a quick VM-based server.
-2. Clone the repository and run `npm i` in it (Windows should work fine).
-3. If you want to see debug output, turn on the prompt's `DEBUG` flag.
-4. Run `npm test` to run the tests and generate coverage. To run the tests without generating coverage, run `npm run-script test-only`.
-
+1. In the config/ dir, copy `readme.redis.env.md` to `redis.env` and fill in your redis server details.
+2. If your Redis server uses TLS, copy your PEM formated ca certificate into the `config/keys/redis/` directory.
+3. If you want to see debug output, turn on the prompt's `DEBUG=*` flag.
+4. Run `npm run test` to run the tests .
 
 ## License
 
-[MIT](LICENSE) © dead_horse
+[MIT](LICENSE)
 
-
-## Contributors
-
+## Original Authors (not involved in this fork)
 | Name           | Website                    |
 | -------------- | -------------------------- |
 | **dead_horse** |                            |
 | **Nick Baugh** | <http://niftylettuce.com/> |
-
-
-## 
-
-[travis-image]: https://img.shields.io/travis/koajs/koa-redis.svg?style=flat-square
-
-[travis-url]: https://travis-ci.org/koajs/koa-redis
-
-[coveralls-image]: https://img.shields.io/coveralls/koajs/koa-redis.svg?style=flat-square
-
-[coveralls-url]: https://coveralls.io/r/koajs/koa-redis?branch=master
-
-[david-image]: https://img.shields.io/david/koajs/koa-redis.svg?style=flat-square&label=deps
-
-[david-url]: https://david-dm.org/koajs/koa-redis
-
-[david-dev-image]: https://img.shields.io/david/dev/koajs/koa-redis.svg?style=flat-square&label=devDeps
-
-[david-dev-url]: https://david-dm.org/koajs/koa-redis#info=devDependencies
-
-[license-image]: https://img.shields.io/npm/l/koa-redis.svg?style=flat-square
-
-[license-url]: https://github.com/koajs/koa-redis/blob/master/LICENSE
-
-[cluster]: https://github.com/luin/ioredis/blob/master/API.md#new-clusterstartupnodes-options
-
-[npm]: https://www.npmjs.com/
-
-[yarn]: https://yarnpkg.com/
