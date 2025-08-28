@@ -103,7 +103,7 @@ class RedisStore extends EventEmitter {
    * @return {RedisStore} Returns the instance with a configured and connected redis client.
    */
   async init(opts) {
-    this.options.isRedisSingle = false
+    this.options.isRedisSingle = true
     this.options.isRedisReplset = false
     this.options.isRedisCluster = false
     this.options.redisUrl = false
