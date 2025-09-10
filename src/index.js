@@ -397,10 +397,16 @@ class RedisStore extends EventEmitter {
    * the client seems to only return 'undefined'.
    * @summary Should return the current state of the redis client [ready, waiting, etc].
    * @author Matthew Duffy <mattduffy@gmail.com>
-   * @type {undefined}
+   * @type {string} open, ready, or waiting
    */
   get status() {
-    return this.client.status
+    if (this.client.isOpen) {
+      return 'open'
+    }
+    if (this.client.isReady) {
+      return 'ready'
+    }
+    return 'waiting'
   }
 
   /**

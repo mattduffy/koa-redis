@@ -106,41 +106,41 @@ app.use(session({
 ## API
 This package provides a minimal api, compatible with `koa-session`, but can be interacted with directly if needed.
 ```javascript
-const sentinel = await (new redisStore()).init(redisSentinelOpts)
-const sess = await sentinel.get('app_1:sessions:user_0093')
+const redis = await (new redisStore()).init(redisSentinelOpts)
+const sess = await redis.get('app_1:sessions:user_0093')
 // modify the sess values
-await sentinel.set('app_1:sessions:user_0093', sess, 86400)
+await redis.set('app_1:sessions:user_0093', sess, 86400)
 // log out the user
-await sentinel.destroy('app_1:sessions:user_0093')
+await redis.destroy('app_1:sessions:user_0093')
 ```
-### await sentinel.get(sid)
+### await redis.get(sid)
 Gets a session by ID. Returns parsed JSON is exists, `null` if it does not exist, and nothing upon error.
 
-### await sentinel.set(sid, sess, ttl)
+### await redis.set(sid, sess, ttl)
 Sets a JSON session by ID with an optional time-to-live (ttl) in seconds.
 
-### await sentinel.destroy(sid)
+### await redis.destroy(sid)
 Destroys a session (removes it from Redis) by ID.
 
-### await sentinel.quit()
+### await redis.quit()
 Stops a Redis session after everything in the queue has completed.
 
-### await sentinel.end()
+### await redis.end()
 Alias to `sentinel.quit()`.
 
-### sentinel.status
-A string representing the current state of the redis connection object.  Currently seems to only return `undefined`.  Don't use.
+### redis.status
+This property was specific to `ioredis` and does not have a directly comparable client property in `node-redis`.  Don't use.
 
-### sentinel.connected
+### redis.connected
 Boolean giving the connection status updated using `client.isReady`.
 
-### sentinel.isReady
+### redis.isReady
 Boolean giving the connection status updated using `client.isReady`.
 
-### sentinel.isOpen
+### redis.isOpen
 Boolean giving the connection status updated using `client.isOpen`.
 
-### sentinel.client
+### redis.client
 Direct access to the `redis` client object.
 
 ## Testing
