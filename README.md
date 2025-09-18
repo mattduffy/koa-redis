@@ -1,6 +1,8 @@
 # @mattduffy/koa-redis
 This is a fork of the [koa-redis](https://www.npmjs.com/package/koa-redis) package, updated to work with the official [Redis](https://www.npmjs.com/package/redis) client library, rather than [ioredis](https://www.npmjs.com/package/ioredis), now that it fully supports connecting to redis sentinel hosts.  This package is almost completely api-compatible with the original koa-redis package, with the exception of supporting `async/await` methods and a `redisStore.init(config)` initialization method.
 
+## Now Supports Saving Session Data as Native JSON Documents!
+
 ## Install
 ```bash
 npm install --save @mattduffy/koa-redis
@@ -100,6 +102,7 @@ app.use(session({
 * `isRedisCluster` (boolean) - Used for creating a Redis cluster instance.  The default value is `false`.
 * `isRedisReplset` (boolean) - Used for creating a Redis Sentinel instance.  The default value is `false`
 * `isRedisSingle` (boolean) - Used for creating a simple, standalone Redis client instance.  The default value is `true`
+* `dataType` (string) - The default is 'string'.  Use 'ReJSON' if you want to store session docs as native JSON.  This checks if the `ReJSON` module is available.
 * `keyPrefix` (string) - A string key prefix value, to simulate `ioredis's` transparent key prefix feature.  The default is '' (empty string).  If no prefix value is supplied when `RedisStore` is instantiated, the full key path will need to be supplied when using the `RedisStore` methods like `set(key, val, ttl)`, `get(key)`, etc.  Otherwise, if `keyPrefix` is included in the config object, simply use the key name with the methods. (keyPrefix: 'app_name:session:', key: 'user_001', full key path would be 'app_name:session:user_001')
 
 
@@ -127,6 +130,9 @@ Stops a Redis session after everything in the queue has completed.
 
 ### await redis.end()
 Alias to `sentinel.quit()`.
+
+### await redis.mods()
+Returns an array of module names available on the server (ex. [ 'timeseries', 'ReJSON', 'bf', 'search', 'vectorset', 'RedisCompat' ]).
 
 ### redis.status
 This property was specific to `ioredis` and does not have a directly comparable client property in `node-redis`.  Don't use.
