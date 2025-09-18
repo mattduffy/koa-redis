@@ -1,21 +1,18 @@
 /**
- * @module @mattduffy/koa-redis
- * @author Matthew Duffy <mattduffy@gmail.com>
+ * @module  @mattduffy/koa-redis
+ * @author  Matthew Duffy <mattduffy@gmail.com>
  * @summary A fork of the original koa/koa-redis package.  This fork replaces ioredis with the
  *          official node-redis package, with support for sentinels and clusters.
- * @file src/index.js
+ * @file    src/index.js
  */
-/** !
+/* Original Author's attribution. */
+/**
  * koa-redis - index.js
  * Copyright(c) 2015
  * MIT Licensed
  *
  * Authors:
  *   dead_horse <dead_horse@qq.com> (http://deadhorse.me)
- */
-
-/**
- * Module dependencies.
  */
 
 import Debug from 'debug'
@@ -26,25 +23,19 @@ import {
 } from 'redis'
 import { EventEmitter } from 'node:events'
 
-// const util = require('util')
-// const { EventEmitter } = require('events')
-// const debug = require('debug')('koa-redis')
-// const Redis = require('ioredis')
-// const wrap = require('co-wrap-all')
-
 const debug = Debug('koa-redis')
 
 /**
  * Initialize redis session middleware with `opts` (see the README for more info):
  *
  * @param   {Object}    opts
- * @param   {String}    opts.db             redis db
- * @param   {Object}    opts.client         redis client (overides all other options except db
- *                                          and duplicate)
- * @param   {String}    opts.socket         redis socket (DEPRECATED: use 'path' instead)
- * @param   {Boolean}   opts.duplicate      if own client object, will use node redis's
- *                                          duplicatefunction and pass other options
- * @param   {String}    opts.password       redis password
+ * @param   {String}    opts.db                   Redis db.
+ * @param   {Object}    opts.client               Redis client (overides all other options
+ *                                                except db and duplicate).
+ * @param   {String}    opts.socket               Redis socket (DEPRECATED: use 'path' instead).
+ * @param   {Boolean}   opts.duplicate            If own client object, will use node redis's
+ *                                                duplicate function and pass other options.
+ * @param   {String}    opts.password             Redis user password.
  * @param   {String}    [opts.redisUrl]
  * @param   {Boolean}   [opts.isRedisSingle = false]
  * @param   {Boolean}   [opts.isRedisReplset = false]
@@ -75,22 +66,24 @@ const debug = Debug('koa-redis')
  * @param   {Boolean}   [opts.defaults.socket.tls]
  * @param   {Boolean}   [opts.defaults.socket.rejectUnauthorized]
  * @param   {Blob}      [opts.defaults.socket.ca]
- * @param   {Any}       [any]               all other options including above passed to redis
- * @returns {Object}    Redis instance
+ * @param   {string}    [opts.dataType = string]  Redis data type to use, string or ReJSON-RL.
+ * @param   {Any}       [any]                     All other options passed to redis.
+ * @returns {Object}                              Redis instance.
  */
 class RedisStore extends EventEmitter {
   /**
    * The RedisStore constructor method.
    * @summary Returns an instance, with an empty redis client placeholder.
    * @author Matthew Duffy <mattduffy@gmail.com>
-   * @param {Object} [opts] - An optional options object.
+   * @param {Object} [opts = null] - An optional options object.
    * @returns {RedisStore}
    */
-  constructor(opts) {
+  constructor(opts = null) {
     super()
     this.client = null
     this.clientType = null
     this.keyPrefix = ''
+    this.dataType = ''
     this.options = opts || {}
   }
 
@@ -113,6 +106,7 @@ class RedisStore extends EventEmitter {
     if (this.options) {
       this.keyPrefix = this.options?.keyPrefix || ''
     }
+    this.dataType = this.options?.dataType || 'string'
     // For backwards compatibility
     this.options.password = this.options.password
       || this.options.auth_pass
@@ -185,6 +179,10 @@ class RedisStore extends EventEmitter {
       this.client = this.options.client
     }
 
+    if (!this.options.client) {
+      await this.client.connect()
+    }
+
     if (this.options.db) {
       debug('selecting db %s', this.options.db)
       this.client.select(this.options.db)
@@ -205,8 +203,7 @@ class RedisStore extends EventEmitter {
     // For backwards compatibility
     this.client.on('end', this.emit.bind(this, 'disconnect'))
 
-    // this.client = client
-
+    // This is legacy ioredis stuff, not used in new fork.
     // Object.defineProperty(this, 'status', {
     //   get() {
     //     return this.client.status
@@ -227,8 +224,14 @@ class RedisStore extends EventEmitter {
       typeof this.options.unserialize === 'function' && this.options.unserialize
     ) || JSON.parse
 
+    // check the available server modules, is ReJSON included?
+    const mods = await this.mods()
+    if (this.dataType === 'ReJSON' && mods.includes('ReJSON')) {
+      this.useReJSON = true
+    } else {
+      this.useReJSON = false
+    }
     // return the connected redis client instance
-    await this.client.connect()
     return this
   }
 
@@ -246,6 +249,25 @@ class RedisStore extends EventEmitter {
   }
 
   /**
+   * Returns an array of available Redis server modules.
+   * @summary Returns an array of available Redis server modules.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @async
+   * @return {string[]} Server module names
+   */
+  async mods() {
+    if (this.modules?.length > 0) {
+      return this.modules
+    }
+    const mods = await this.client.info('modules')
+    // debug(mods)
+    const lines = mods.split('\r\n')
+    const availableModules = lines.filter((m) => /^module:name=.*/.test(m))
+    this.modules = availableModules.map((m) => m.slice(m.indexOf('=') + 1, m.indexOf(',')))
+    return this.modules
+  }
+
+  /**
    *  Returns the string value of the given key.
    *  @summary Returns the string value of the given key.
    *  @author Matthew Duffy <mattduffy@gmail.com>
@@ -255,9 +277,16 @@ class RedisStore extends EventEmitter {
    */
   async get(_sid) {
     let result
+    let data
     const sid = `${this.keyPrefix}${_sid}`
-    debug(`koa-redis->get(${sid})`)
-    const data = await this.client.get(sid)
+    if (!this.useReJSON) {
+      debug(`koa-redis->get(${sid})`)
+      data = await this.client.get(sid)
+    } else {
+      debug(`koa-redis->json->get(${sid})`)
+      data = await this.client.json.get(sid)
+      return data
+    }
     debug('get session: %s', data || 'none')
     if (!data) {
       return null
@@ -282,28 +311,45 @@ class RedisStore extends EventEmitter {
    * @return {undefined}
    */
   async set(_sid, _sess, _ttl) {
-    let ttl
+    let ttl = null
     const sid = `${this.keyPrefix}${_sid}`
-    const sess = this.serialize(_sess)
-    console.log('%o', sess)
-    // eslint-disable-next-line
-    debug(`koa-redis->set(${sid}, ${sess}${_ttl ? ', { EX: ' + _ttl + ' }': ''})`)
+    debug('what is this.useReJSON?', this.useReJSON)
+    const sess = (this.useReJSON) ? _sess : this.serialize(_sess)
+    debug('what is _sess now?', _sess)
     if (typeof _ttl === 'number') {
       // ttl = Math.ceil(_ttl / 1000)
       // keep the value as seconds, not milliseconds
       ttl = Math.ceil(_ttl)
       debug('ttl', ttl)
     }
+    // eslint-disable-next-line
+    debug(`koa-redis->set(${sid}, ${sess}${ttl ? ', { EX: ' + ttl + ' }': ''})`)
+
     if (ttl) {
-      // debug('SETEX %s %s %s', sid, ttl, sess)
-      debug('SET %s %s %o', sid, sess, { EX: ttl })
-      // await this.client.setex(sid, ttl, sess)
-      await this.client.set(sid, sess, { EX: ttl })
+      if (!this.useReJSON) {
+        debug('SET %s %s %o', sid, sess, { EX: ttl })
+        await this.client.set(sid, sess, { EX: ttl })
+      } else {
+        debug('json.set(%s, %s, %o)', sid, sess, { EX: ttl })
+        await this.client.json.set(sid, '$', sess, { EX: ttl })
+      }
     } else {
-      debug('SET %s %s', sid, sess)
-      await this.client.set(sid, sess)
+      switch (this.useReJSON) {
+        case false:
+          debug('SET %s %s', sid, sess)
+          await this.client.set(sid, sess)
+          break
+        case true:
+          debug('json.set(%s, %s)', sid, sess)
+          await this.client.json.set(sid, '$', sess)
+          break
+        default:
+          debug('failed to set session (w/out TTL).')
+          debug('what was this.useReJSON?', this.useReJSON)
+          break
+      }
     }
-    debug('SET %s complete', sid)
+    debug('%s %s complete', (this.useReJSON) ? 'json.set' : 'SET', sid)
   }
 
   /**
