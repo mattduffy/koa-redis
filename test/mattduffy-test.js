@@ -175,21 +175,21 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     await redisClient.quit()
   })
 
-  it('Redis standalone should set a key (keyPrefix included).', async () => {
+  it('Redis standalone should set a key (keyPrefix included) { a: 1 }.', async () => {
     const standalone = new Standalone()
     const { RedisStore } = await import('../src/index.js')
     const _r = new RedisStore()
     redisClient = await _r.init(standalone.config)
     const key = 'key:1'
-    const val = { a: 2 }
+    const val = { a: 1 }
     await redisClient.set(key, val)
     const check = await redisClient.get(key)
     log(`checking the returned value of key ${keyPrefix}${key}`, check)
-    assert.equal(val.a, check.a)
     await redisClient.quit()
+    assert.equal(val.a, check.a)
   })
 
-  it('Redis standalone should set a key (keyPrefix NOT included).', async () => {
+  it('Redis standalone should set a key (keyPrefix NOT included) { a: 2 }.', async () => {
     const standalone = new Standalone()
     delete standalone.config.keyPrefix
     const { RedisStore } = await import('../src/index.js')
@@ -200,74 +200,101 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     await redisClient.set(key, val)
     const check = await redisClient.get(key)
     log(`checking the returned value of key ${keyPrefix}${key}`, check)
+    await redisClient.quit()
     assert.equal(val.a, check.a)
-    await redisClient.quit()
   })
 
-  it('Redis standalone should set a key with ttl.', async () => {
-    const standalone = new Standalone()
-    const { RedisStore } = await import('../src/index.js')
-    const _r = new RedisStore()
-    redisClient = await _r.init(standalone.config)
-    const key = 'key:ttl:2'
-    const val = { a: 2 }
-    const ttl = 86400
-    await redisClient.set(key, val, ttl)
-    const check = await redisClient.ttl(key)
-    // log(`checking the returned ttl ${keyPrefix}${key}`, check)
-    assert.equal(ttl, check)
-    await redisClient.quit()
-  })
-
-  it('Expired key should return -2.', async () => {
+  it('Redis standalone should set a key with ttl { a: 3 }, { EX: 86400 }.', async () => {
     const standalone = new Standalone()
     const { RedisStore } = await import('../src/index.js')
     const _r = new RedisStore()
     redisClient = await _r.init(standalone.config)
     const key = 'key:ttl:3'
     const val = { a: 3 }
+    const ttl = 86400
+    await redisClient.set(key, val, ttl)
+    const check = await redisClient.ttl(key)
+    // log(`checking the returned ttl ${keyPrefix}${key}`, check)
+    await redisClient.quit()
+    assert.equal(ttl, check)
+  })
+
+  it('Expired key should return -2 { a: 4 }.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    redisClient = await _r.init(standalone.config)
+    const key = 'key:ttl:4'
+    const val = { a: 4 }
     const ttl = 1
     await redisClient.set(key, val, ttl)
     await new Promise((resolve) => { setTimeout(resolve, 2000) })
     const check = await redisClient.ttl(key)
     log(`checking the returned ttl ${keyPrefix}${key}`, check)
-    assert.equal(check, -2)
     await redisClient.quit()
+    assert.equal(check, -2)
   })
 
-  it('should not throw an error with bad JSON', async () => {
+  it('should not throw an error with bad JSON { I will cause an error! }', async () => {
     const standalone = new Standalone()
     const { RedisStore } = await import('../src/index.js')
     const _r = new RedisStore()
     redisClient = await _r.init(standalone.config)
-    const key = 'key:badKey:3'
+    const key = 'key:badKey:5'
     // const val = { I will cause an error! }
     await redisClient.set(key, '{ I will cause an error! }')
     const check = await redisClient.get(key)
     log(`checking the returned key ${keyPrefix}${key}`, check)
-    assert.equal('{ I will cause an error! }', check)
     await redisClient.quit()
+    assert.equal('{ I will cause an error! }', check)
   })
 
-  it('destroy a key', async () => {
+  it('destroy a key { a: 6 }', async () => {
     const standalone = new Standalone()
     const { RedisStore } = await import('../src/index.js')
     const _r = new RedisStore()
     redisClient = await _r.init(standalone.config)
-    const key = 'key:destroy:4'
-    await redisClient.set(key, { a: 4 })
+    const key = 'key:destroy:6'
+    await redisClient.set(key, { a: 6 })
     const check = await redisClient.destroy(key)
     log('destroy', check)
-    assert(check > 0)
     await redisClient.quit()
+    assert(check > 0)
+  })
+
+  it('Redis should return available server modules.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    const configWithDataType = standalone.config
+    configWithDataType.dataType = 'ReJSON-RL'
+    redisClient = await _r.init(configWithDataType)
+    const mods = await redisClient.mods()
+    await redisClient.quit()
+    assert(mods.length > 0)
+    assert(mods.includes('ReJSON'))
+  })
+
+  it('Data type of session value should be ReJSON-RL { a: 7 }.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    const configWithDataType = standalone.config
+    configWithDataType.dataType = 'ReJSON'
+    redisClient = await _r.init(configWithDataType)
+    const session = { test: true, name: 'Matt', package: '@mattduffy/koa-redis' }
+    const key = 'key:ttl:7'
+    const ttl = ((86400 / 24) / 60) * 3
+    await redisClient.set(key, session, ttl)
+    const check = await redisClient.get(key)
+    await redisClient.quit()
+    log(check)
+    assert(true)
   })
 
   it('Redis replset should connect and acknowledge a PING', async () => {
     const replset = new Replset()
-    const {
-      RedisStore,
-      // redisStore,
-    } = await import('../src/index.js')
+    const { RedisStore } = await import('../src/index.js')
     const _redisReplset = new RedisStore()
     redisReplset = await _redisReplset.init(replset.config)
     assert(await redisReplset.ping() === 'PONG')
