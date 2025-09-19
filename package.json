@@ -1,7 +1,7 @@
 {
   "name": "@mattduffy/koa-redis",
   "description": "My fork of koa-redis middleware/cache with Sentinel and Cluster support (now using official node-redis library instead of ioredis).",
-  "version": "5.1.5",
+  "version": "5.1.6",
   "author": "mattduffy <mattduffy@gmail.com>",
   "homepage": "https://github.com/mattduffy/koa-redis",
   "bugs": {
