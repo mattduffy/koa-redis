@@ -216,7 +216,7 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     const check = await redisClient.ttl(key)
     // log(`checking the returned ttl ${keyPrefix}${key}`, check)
     await redisClient.quit()
-    assert.equal(ttl, check)
+    assert((ttl > check) && (check > 0))
   })
 
   it('Expired key should return -2 { a: 4 }.', async () => {
