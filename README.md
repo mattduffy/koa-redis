@@ -2,7 +2,7 @@
 This is a fork of the [koa-redis](https://www.npmjs.com/package/koa-redis) package, updated to work with the official [Redis](https://www.npmjs.com/package/redis) client library, rather than [ioredis](https://www.npmjs.com/package/ioredis), now that it fully supports connecting to redis sentinel hosts.  This package is almost completely api-compatible with the original koa-redis package, with the exception of supporting `async/await` methods and a `redisStore.init(config)` initialization method.
 
 ## Now Supports Saving Session Data as Native JSON Documents!
-With the inclusion of the configuration parameter `dataType: 'ReJSON-RL'`, you can store your session data as native JSON documents instead of serialized strings. The Redis server needs to include the `ReJSON` module for this to work.  `RedisStore` verifies this module is included and enabled, otherwise reverts to the default `string` storage behavior.  See below for examples.
+With the inclusion of the configuration parameter `dataType: 'ReJSON-RL'`, you can store your session data as native JSON documents instead of serialized strings. The Redis server needs to include the `ReJSON` module for this to work.  `RedisStore` verifies this module is included and enabled, otherwise reverts to the default `string` storage behavior.  Now you can enjoy all the benefits of the JSON datatype, such as Full Text Indexing and Search, KNN vector similarity searches with added embeddings, Aggregation queries, etc.. See below for examples.
 
 ## Install
 ```bash
