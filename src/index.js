@@ -36,12 +36,14 @@ const debug = Debug('@mattduffy/koa-redis')
  * @param   {Boolean}   opts.duplicate            If own client object, will use node redis's
  *                                                duplicate function and pass other options.
  * @param   {String}    opts.password             Redis user password.
+ * @param   {String}    [opts.keyPrefix]          Like ioredis's tranaparent key prefix.
+ * @param   {string}    [opts.dataType = string]  Redis data type to use, string or ReJSON-RL
+ *                                                (or ReJSON is acceptable).
  * @param   {String}    [opts.redisUrl]
  * @param   {Boolean}   [opts.isRedisSingle = false]
  * @param   {Boolean}   [opts.isRedisReplset = false]
  * @param   {Boolean}   [opts.isRedisCluster = false]
  * @param   {String}    opts.name
- * @param   {String}    [opts.keyPrefix]
  * @param   {Object[]}  opts.sentinelRootNodes
  * @param   {Object}    opts.sentinelClientOptions
  * @param   {String}    opts.sentinelClientOptions.username
@@ -66,7 +68,6 @@ const debug = Debug('@mattduffy/koa-redis')
  * @param   {Boolean}   [opts.defaults.socket.tls]
  * @param   {Boolean}   [opts.defaults.socket.rejectUnauthorized]
  * @param   {Blob}      [opts.defaults.socket.ca]
- * @param   {string}    [opts.dataType = string]  Redis data type to use, string or ReJSON-RL.
  * @param   {Any}       [any]                     All other options passed to redis.
  * @returns {Object}                              Redis instance.
  */
@@ -226,7 +227,7 @@ class RedisStore extends EventEmitter {
 
     // check the available server modules, is ReJSON included?
     const mods = await this.mods()
-    if (this.dataType === 'ReJSON' && mods.includes('ReJSON')) {
+    if (/^rejson(?:-rl)?/i.test(this.dataType) && mods.includes('ReJSON')) {
       this.useReJSON = true
     } else {
       this.useReJSON = false

@@ -2,6 +2,7 @@
 This is a fork of the [koa-redis](https://www.npmjs.com/package/koa-redis) package, updated to work with the official [Redis](https://www.npmjs.com/package/redis) client library, rather than [ioredis](https://www.npmjs.com/package/ioredis), now that it fully supports connecting to redis sentinel hosts.  This package is almost completely api-compatible with the original koa-redis package, with the exception of supporting `async/await` methods and a `redisStore.init(config)` initialization method.
 
 ## Now Supports Saving Session Data as Native JSON Documents!
+With the inclusion of the configuration parameter `dataType: 'ReJSON-RL'`, you can store your session data as native JSON documents instead of serialized strings. The Redis server needs to include the `ReJSON` module for this to work.  `RedisStore` verifies this module is included and enabled, otherwise reverts to the default `string` storage behavior.  See below for examples.
 
 ## Install
 ```bash
@@ -18,6 +19,8 @@ import { redisStore } from '@mattduffy/koa-redis'
 // simple standalone redis host
 const redisConfigOpts = {
   url: "redis://username:password@<redis_host>:<redis_port>",
+  keyPrefix: <ioredis-style-transparent-prefix>,
+  dataType: 'string',
 }
 const redis = await (new redisStore()).init(redisConfigOpts)
 const app = new Koa.default()
@@ -32,6 +35,8 @@ app.use(session({
 const redisSentinelOpts = {
   isRedisReplset: true,
   name: <your_replicaset_name>,
+  keyPrefix: <ioredis-style-transparent-prefix>,
+  dataType: 'ReJSON-RL',
   lazyConnect: <true|false>,
   role: 'master',
   sentinelRootNodes: [
@@ -70,6 +75,8 @@ app.use(session({
 ```javascript
 const redisClusterOpts = {
   isRedisCluster: true,
+  keyPrefix: <ioredis-style-transparent-prefix>,
+  dataType: 'ReJSON-RL',
   rootNodes: [
     { url: 'redis://10.0.0.1:30001' },
     { url: 'redis://10.0.0.2:30001' },
@@ -102,7 +109,7 @@ app.use(session({
 * `isRedisCluster` (boolean) - Used for creating a Redis cluster instance.  The default value is `false`.
 * `isRedisReplset` (boolean) - Used for creating a Redis Sentinel instance.  The default value is `false`
 * `isRedisSingle` (boolean) - Used for creating a simple, standalone Redis client instance.  The default value is `true`
-* `dataType` (string) - The default is 'string'.  Use 'ReJSON' if you want to store session docs as native JSON.  This checks if the `ReJSON` module is available.
+* `dataType` (string) - The default is 'string'.  Use 'ReJSON-RL' if you want to store session docs as native JSON.  This checks if the `ReJSON` module is available (nb. either `ReJSON-RL` or `ReJSON` as the value to avoid confusion between the data type name and the module name).
 * `keyPrefix` (string) - A string key prefix value, to simulate `ioredis's` transparent key prefix feature.  The default is '' (empty string).  If no prefix value is supplied when `RedisStore` is instantiated, the full key path will need to be supplied when using the `RedisStore` methods like `set(key, val, ttl)`, `get(key)`, etc.  Otherwise, if `keyPrefix` is included in the config object, simply use the key name with the methods. (keyPrefix: 'app_name:session:', key: 'user_001', full key path would be 'app_name:session:user_001')
 
 
