@@ -330,8 +330,9 @@ class RedisStore extends EventEmitter {
         debug('SET %s %s %o', sid, sess, { EX: ttl })
         await this.client.set(sid, sess, { EX: ttl })
       } else {
-        debug('json.set(%s, %s, %o)', sid, sess, { EX: ttl })
-        await this.client.json.set(sid, '$', sess, { EX: ttl })
+        debug('json.set(%s, %s, %o)', sid, sess)
+        await this.client.json.set(sid, '$', sess)
+        await this.client.expire(sid, ttl)
       }
     } else {
       switch (this.useReJSON) {

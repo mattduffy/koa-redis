@@ -289,7 +289,26 @@ describe('Test koa-redis session handling using latest node-redis library.', asy
     const check = await redisClient.get(key)
     await redisClient.quit()
     log(check)
-    assert(true)
+    assert.equal(session.name, check.name)
+  })
+
+  it('Expire a JSON session document after 4 seconds { a: 8 }.', async () => {
+    const standalone = new Standalone()
+    const { RedisStore } = await import('../src/index.js')
+    const _r = new RedisStore()
+    const configWithDataType = standalone.config
+    configWithDataType.dataType = 'ReJSON'
+    redisClient = await _r.init(configWithDataType)
+    const session = { a: 8 }
+    const key = 'key:ttl:8'
+    const ttl = 4
+    await redisClient.set(key, session, ttl)
+    await new Promise((resolve) => { setTimeout(resolve, 4100) })
+    const check = await redisClient.ttl(key)
+    log(`checking for expired ttl ${keyPrefix}${key}`, check)
+    await redisClient.quit()
+    log(check)
+    assert.equal(check, -2)
   })
 
   it('Redis replset should connect and acknowledge a PING', async () => {
