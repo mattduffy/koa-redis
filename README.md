@@ -109,7 +109,7 @@ app.use(session({
 * `isRedisCluster` (boolean) - Used for creating a Redis cluster instance.  The default value is `false`.
 * `isRedisReplset` (boolean) - Used for creating a Redis Sentinel instance.  The default value is `false`
 * `isRedisSingle` (boolean) - Used for creating a simple, standalone Redis client instance.  The default value is `true`
-* `dataType` (string) - The default is 'string'.  Use 'ReJSON-RL' if you want to store session docs as native JSON.  This checks if the `ReJSON` module is available (nb. either `ReJSON-RL` or `ReJSON` as the value to avoid confusion between the data type name and the module name).
+* `dataType` (string) - The default is 'string'.  Use 'ReJSON-RL' if you want to store session docs as native JSON.  This checks if the `ReJSON` module is available (nb. either `ReJSON-RL` or `ReJSON` is acceptble as the value to avoid confusion between the data type name and the module name).
 * `keyPrefix` (string) - A string key prefix value, to simulate `ioredis's` transparent key prefix feature.  The default is '' (empty string).  If no prefix value is supplied when `RedisStore` is instantiated, the full key path will need to be supplied when using the `RedisStore` methods like `set(key, val, ttl)`, `get(key)`, etc.  Otherwise, if `keyPrefix` is included in the config object, simply use the key name with the methods. (keyPrefix: 'app_name:session:', key: 'user_001', full key path would be 'app_name:session:user_001')
 
 
