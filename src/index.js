@@ -23,7 +23,7 @@ import {
 } from 'redis'
 import { EventEmitter } from 'node:events'
 
-const debug = Debug('koa-redis')
+const debug = Debug('@mattduffy/koa-redis')
 
 /**
  * Initialize redis session middleware with `opts` (see the README for more info):
@@ -313,35 +313,33 @@ class RedisStore extends EventEmitter {
   async set(_sid, _sess, _ttl) {
     let ttl = null
     const sid = `${this.keyPrefix}${_sid}`
-    debug('what is this.useReJSON?', this.useReJSON)
+    // debug('what is this.useReJSON?', this.useReJSON)
     const sess = (this.useReJSON) ? _sess : this.serialize(_sess)
-    debug('what is _sess now?', _sess)
+    // debug('what is _sess now?', _sess)
     if (typeof _ttl === 'number') {
-      // ttl = Math.ceil(_ttl / 1000)
-      // keep the value as seconds, not milliseconds
-      ttl = Math.ceil(_ttl)
-      debug('ttl', ttl)
+      ttl = Math.ceil(_ttl / 1000)
+      // debug('ttl', ttl)
     }
     // eslint-disable-next-line
-    debug(`koa-redis->set(${sid}, ${sess}${ttl ? ', { EX: ' + ttl + ' }': ''})`)
+    // debug(`koa-redis->set(${sid}, ${sess}${ttl ? ', { EX: ' + ttl + ' }': ''})`)
 
     if (ttl) {
       if (!this.useReJSON) {
-        debug('SET %s %s %o', sid, sess, { EX: ttl })
+        // debug('SET %s %s %o', sid, sess, { EX: ttl })
         await this.client.set(sid, sess, { EX: ttl })
       } else {
-        debug('json.set(%s, %s, %o)', sid, sess)
+        // debug('json.set(%s, %s, %o)', sid, sess)
         await this.client.json.set(sid, '$', sess)
         await this.client.expire(sid, ttl)
       }
     } else {
       switch (this.useReJSON) {
         case false:
-          debug('SET %s %s', sid, sess)
+          // debug('SET %s %s', sid, sess)
           await this.client.set(sid, sess)
           break
         case true:
-          debug('json.set(%s, %s)', sid, sess)
+          // debug('json.set(%s, %s)', sid, sess)
           await this.client.json.set(sid, '$', sess)
           break
         default:
