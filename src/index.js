@@ -73,6 +73,11 @@ const debug = Debug('@mattduffy/koa-redis')
  */
 class RedisStore extends EventEmitter {
   /**
+   * A default maximum number of seconds to delay reconnect attempts by.
+   */
+  RECONNECT_DELAY
+
+  /**
    * The RedisStore constructor method.
    * @summary Returns an instance, with an empty redis client placeholder.
    * @author Matthew Duffy <mattduffy@gmail.com>
@@ -118,15 +123,15 @@ class RedisStore extends EventEmitter {
       || this.options.socket
       || null
 
+    this.RECONNECT_DELAY = this.options?.reconnectDelay || 5000
     if (!this.options.client) {
-      // const redisUrl = this.options.url && this.options.url.toString()
-      // delete this.options.url
-
       if (this.options.isRedisCluster) {
         debug('Initializing Redis Cluster')
         delete this.options.isRedisCluster
         delete this.options.isRedisSingle
         delete this.options.isRedisReplset
+        // add the reconnect strategy
+        this.options.clusterOptions.socket.reconnectStrategy = this.reconnectStrategy
         this.client = await createCluster(this.options.clusterOptions)
         this.clientType = 'cluster'
       } else if (this.options.sentinelRootNodes
@@ -136,6 +141,9 @@ class RedisStore extends EventEmitter {
         delete this.options.isRedisReplset
         delete this.options.isRedisCluster
         debug('Initializing Redis Replica set with Sentinels')
+        // add the reconnect strategy
+        this.options.sentinelClientOptions.socket.reconnectStrategy = this.reconnectStrategy
+        this.options.nodeClientOptions.socket.reconnectStrategy = this.reconnectStrategy
         this.client = await createSentinel(this.options)
         this.clientType = 'sentinel'
       } else {
@@ -145,6 +153,8 @@ class RedisStore extends EventEmitter {
         delete this.options.isRedisCluster
         delete this.options.clusterOptions
         delete this.options.nodes
+        // add the reconnect strategy
+        this.options.socket.reconnectStrategy = this.reconnectStrategy
         if (this.options.redisUrl) {
           this.client = await createClient(this.options.redisUrl, this.options)
         } else {
@@ -196,26 +206,16 @@ class RedisStore extends EventEmitter {
 
     ['connect', 'ready', 'error', 'close', 'reconnecting', 'end'].forEach(
       (name) => {
-        this.on(name, () => debug(`redis ${name}`))
+        this.on(name, (e) => {
+          debug(`redis ${name}`)
+          if (e) debug(e)
+        })
         this.client.on(name, this.emit.bind(this, name))
       },
     )
 
     // For backwards compatibility
     this.client.on('end', this.emit.bind(this, 'disconnect'))
-
-    // This is legacy ioredis stuff, not used in new fork.
-    // Object.defineProperty(this, 'status', {
-    //   get() {
-    //     return this.client.status
-    //   },
-    // })
-
-    // Object.defineProperty(this, 'connected', {
-    //   get() {
-    //     return ['connect', 'ready'].includes(this.status)
-    //   },
-    // })
 
     // Support optional serialize and unserialize
     this.serialize = (
@@ -236,7 +236,26 @@ class RedisStore extends EventEmitter {
     return this
   }
 
-  // util.inherits(RedisStore, EventEmitter)
+  /**
+   * Defines how the client tries to reconnect to server after an unintentional disconnect.
+   * @summary The default client reconnect strategy.
+   * @author Matthew Duffy <mattduffy@gmail.com>
+   * @param {Number}  [retries=10] - Number of times the client should attempt to reconnect.
+   * @param {Error}   cause - The reported cause of the client disconnection.
+   * @return {Boolean|Number|Error}
+   */
+  reconnectStrategy(retries, cause) {
+    if (cause) {
+      debug(`The redis-${this.clientType} connection was disconnected with the following error:`)
+      debug(cause)
+      debug(`The redis-${this.clientType} will attempt up to ${retries} times to reconnect.`)
+    }
+    if (!retries || retries < 0) {
+      return false
+    }
+    const jitter = Math.floor(Math.random() * 100)
+    return Math.min((2 ** retries) * 50, this.RECONNECT_DELAY) + jitter
+  }
 
   /**
    *  Returns PONG if no argument is provided.
