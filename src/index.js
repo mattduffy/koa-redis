@@ -29,16 +29,18 @@ const debug = Debug('@mattduffy/koa-redis')
  * Initialize redis session middleware with `opts` (see the README for more info):
  *
  * @param   {Object}    opts
- * @param   {String}    opts.db                   Redis db.
- * @param   {Object}    opts.client               Redis client (overides all other options
- *                                                except db and duplicate).
- * @param   {String}    opts.socket               Redis socket (DEPRECATED: use 'path' instead).
- * @param   {Boolean}   opts.duplicate            If own client object, will use node redis's
- *                                                duplicate function and pass other options.
- * @param   {String}    opts.password             Redis user password.
- * @param   {String}    [opts.keyPrefix]          Like ioredis's tranaparent key prefix.
- * @param   {string}    [opts.dataType = string]  Redis data type to use, string or ReJSON-RL
- *                                                (or ReJSON is acceptable).
+ * @param   {String}    opts.db                       Redis db.
+ * @param   {Object}    opts.client                   Redis client (overides all other options
+ *                                                    except db and duplicate).
+ * @param   {String}    opts.socket                   Redis socket: DEPRECATED use 'path' instead.
+ * @param   {Boolean}   opts.duplicate                If own client object, will use node redis's
+ *                                                    duplicate function and pass other options.
+ * @param   {String}    opts.password                 Redis user password.
+ * @param   {String}    [opts.keyPrefix]              Like ioredis's tranaparent key prefix.
+ * @param   {Number}    [opts.reconnectDelay = 5000]  Max milliseconds between reconnect attempts.
+ * @param   {Number}    [opts.reconnectRetries = 10]  Max reconnect attempts before giving up.
+ * @param   {string}    [opts.dataType = string]      Redis data type to use, string or ReJSON-RL
+ *                                                    (or ReJSON is acceptable).
  * @param   {String}    [opts.redisUrl]
  * @param   {Boolean}   [opts.isRedisSingle = false]
  * @param   {Boolean}   [opts.isRedisReplset = false]
@@ -73,9 +75,14 @@ const debug = Debug('@mattduffy/koa-redis')
  */
 class RedisStore extends EventEmitter {
   /**
-   * A default maximum number of seconds to delay reconnect attempts by.
+   * A default maximum number of milliseconds to delay reconnect attempts by.
    */
   RECONNECT_DELAY
+
+  /**
+   * A default maximum number of reconnect attempts before giving up.
+   */
+  RECONNECT_RETRIES
 
   /**
    * The RedisStore constructor method.
@@ -91,6 +98,8 @@ class RedisStore extends EventEmitter {
     this.keyPrefix = ''
     this.dataType = ''
     this.options = opts || {}
+    // Bind to this instance because node-redis calls the strategy as a plain function.
+    this.reconnectStrategy = this.reconnectStrategy.bind(this)
   }
 
   /**
@@ -124,6 +133,7 @@ class RedisStore extends EventEmitter {
       || null
 
     this.RECONNECT_DELAY = this.options?.reconnectDelay || 5000
+    this.RECONNECT_RETRIES = this.options?.reconnectRetries ?? 10
     if (!this.options.client) {
       if (this.options.isRedisCluster) {
         debug('Initializing Redis Cluster')
@@ -190,6 +200,22 @@ class RedisStore extends EventEmitter {
       this.client = this.options.client
     }
 
+    // Forward client events before connecting.  node-redis emits 'error' between
+    // reconnect attempts, and without a listener the first failed attempt would throw
+    // and skip the reconnect strategy.
+    ['connect', 'ready', 'error', 'close', 'reconnecting', 'end'].forEach(
+      (name) => {
+        this.on(name, (e) => {
+          debug(`redis ${name}`)
+          if (e) debug(e)
+        })
+        this.client.on(name, this.emit.bind(this, name))
+      },
+    )
+
+    // For backwards compatibility
+    this.client.on('end', this.emit.bind(this, 'disconnect'))
+
     if (!this.options.client) {
       await this.client.connect()
     }
@@ -203,19 +229,6 @@ class RedisStore extends EventEmitter {
         this.client.send_anyways = false
       })
     }
-
-    ['connect', 'ready', 'error', 'close', 'reconnecting', 'end'].forEach(
-      (name) => {
-        this.on(name, (e) => {
-          debug(`redis ${name}`)
-          if (e) debug(e)
-        })
-        this.client.on(name, this.emit.bind(this, name))
-      },
-    )
-
-    // For backwards compatibility
-    this.client.on('end', this.emit.bind(this, 'disconnect'))
 
     // Support optional serialize and unserialize
     this.serialize = (
@@ -240,19 +253,23 @@ class RedisStore extends EventEmitter {
    * Defines how the client tries to reconnect to server after an unintentional disconnect.
    * @summary The default client reconnect strategy.
    * @author Matthew Duffy <mattduffy@gmail.com>
-   * @param {Number}  [retries=10] - Number of times the client should attempt to reconnect.
+   * @param {Number}  retries - Number of reconnect attempts made so far (starts at 0).
    * @param {Error}   cause - The reported cause of the client disconnection.
-   * @return {Boolean|Number|Error}
+   * @return {Boolean|Number|Error} False to stop reconnecting, or the number of
+   *                                milliseconds to wait before the next attempt.
    */
   reconnectStrategy(retries, cause) {
     if (cause) {
-      debug(`The redis-${this.clientType} connection was disconnected with the following error:`)
+      debug(`redis-${this.clientType} connection was disconnected with the following error:`)
       debug(cause)
-      debug(`The redis-${this.clientType} will attempt up to ${retries} times to reconnect.`)
     }
-    if (!retries || retries < 0) {
+    if (retries >= this.RECONNECT_RETRIES) {
+      debug(`redis-${this.clientType} giving up after ${retries} reconnect attempts.`)
       return false
     }
+    debug(
+      `redis-${this.clientType} reconnect attempt ${retries + 1} of ${this.RECONNECT_RETRIES}.`,
+    )
     const jitter = Math.floor(Math.random() * 100)
     return Math.min((2 ** retries) * 50, this.RECONNECT_DELAY) + jitter
   }
@@ -327,7 +344,7 @@ class RedisStore extends EventEmitter {
    * @async
    * @param {string} _sid - The name of the key whose value is to be set.
    * @param {string|Object} _sess - The value to be set on key <_sid>.
-   * @param {number} [_ttl] - An optional time in seconds before key expires.
+   * @param {number} [_ttl] - An optional time in milliseconds before key expires.
    * @return {undefined}
    */
   async set(_sid, _sess, _ttl) {

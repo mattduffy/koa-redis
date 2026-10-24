@@ -19,6 +19,8 @@ import { redisStore } from '@mattduffy/koa-redis'
 // simple standalone redis host
 const redisConfigOpts = {
   url: "redis://username:password@<redis_host>:<redis_port>",
+  reconnectRetries: 5,
+  reconnectDelay: 2500,
   keyPrefix: <ioredis-style-transparent-prefix>,
   dataType: 'string',
 }
@@ -35,6 +37,8 @@ app.use(session({
 const redisSentinelOpts = {
   isRedisReplset: true,
   name: <your_replicaset_name>,
+  reconnectRetries: 5,
+  reconnectDelay: 2500,
   keyPrefix: <ioredis-style-transparent-prefix>,
   dataType: 'ReJSON-RL',
   lazyConnect: <true|false>,
@@ -75,6 +79,8 @@ app.use(session({
 ```javascript
 const redisClusterOpts = {
   isRedisCluster: true,
+  reconnectRetries: 5,
+  reconnectDelay: 2500,
   keyPrefix: <ioredis-style-transparent-prefix>,
   dataType: 'ReJSON-RL',
   rootNodes: [
@@ -107,8 +113,10 @@ app.use(session({
 * `serialize` - Used to serialize the data that is saved into the store.
 * `unserialize` - Used to unserialize the data that is fetched from the store.
 * `isRedisCluster` (boolean) - Used for creating a Redis cluster instance.  The default value is `false`.
-* `isRedisReplset` (boolean) - Used for creating a Redis Sentinel instance.  The default value is `false`
-* `isRedisSingle` (boolean) - Used for creating a simple, standalone Redis client instance.  The default value is `true`
+* `isRedisReplset` (boolean) - Used for creating a Redis Sentinel instance.  The default value is `false`.
+* `isRedisSingle` (boolean) - Used for creating a simple, standalone Redis client instance.  The default value is `true`.
+* `reconnectRetries` (number) - Maximum number of times to try reconnecting to Redis (initial connection and after a disconnect) before giving up.  The default value is `10`.
+* `reconnectDelay` (number) - Number in milliseconds to wait between reconnect attempts.  The default value is `5000`.
 * `dataType` (string) - The default is 'string'.  Use 'ReJSON-RL' if you want to store session docs as native JSON.  This checks if the `ReJSON` module is available (nb. either `ReJSON-RL` or `ReJSON` is acceptable as the value to avoid confusion between the data type name and the module name).
 * `keyPrefix` (string) - A string key prefix value, to simulate `ioredis's` transparent key prefix feature.  The default is '' (empty string).  If no prefix value is supplied when `RedisStore` is instantiated, the full key path will need to be supplied when using the `RedisStore` methods like `set(key, val, ttl)`, `get(key)`, etc.  Otherwise, if `keyPrefix` is included in the config object, simply use the key name with the methods. (keyPrefix: 'app_name:session:', key: 'user_001', full key path would be 'app_name:session:user_001')
 
